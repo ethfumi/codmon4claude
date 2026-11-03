@@ -16,6 +16,8 @@ import json
 import os
 import sys
 import urllib.request
+
+import local_env
 from datetime import datetime, timedelta, timezone
 
 JST = timezone(timedelta(hours=9))
@@ -129,6 +131,7 @@ def to_text(s: dict) -> str:
 
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
+    local_env.load()
     p = argparse.ArgumentParser()
     p.add_argument("--file")
     p.add_argument("--json", action="store_true")
