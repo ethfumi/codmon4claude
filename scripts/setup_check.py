@@ -113,6 +113,13 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
             "準備は済んでいると保護者が言うなら、連絡帳専用の「codmon」ではない環境（Default など）で始めた可能性が高いので、"
             "「codmon」の環境で新しいセッションを始め直すよう案内する。"
         )
+    elif not network_blocked and missing_env:
+        lines.append("")
+        lines.append(
+            "ネットワークは通るが環境変数が足りない。環境変数は保存してもすぐには入らない。"
+            "入れたばかりなら、10 分ほど何も送らずに置いてから何か送ってもらうか、「codmon」の環境で新しいセッションを始めてもらう。"
+            "まだ入れていなければ docs/setup.md の 4 を案内する。"
+        )
 
     ready = not network_blocked and not missing_env and piyolog["state"] == "ok" and codmon["state"] == "ok"
     lines.append("")
