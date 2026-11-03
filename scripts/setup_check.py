@@ -14,6 +14,8 @@ import sys
 import urllib.error
 import urllib.request
 
+import local_env
+
 TIMEOUT_SEC = 8
 CODMON_URL = "https://parents.codmon.com/"
 PIYOLOG_FEED_PREFIX = "https://feed.piyolog.com/v1/feed/"
@@ -107,8 +109,9 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
     if network_blocked and len(missing_env) == len(REQUIRED_ENV):
         lines.append("")
         lines.append(
-            "ネットワークも環境変数も無いので、連絡帳専用の「codmon」ではない環境（Default など）で始めた可能性が高い。"
-            "まず「codmon」の環境で新しいセッションを始め直すよう案内する。まだ作っていなければ docs/setup.md の 2 から案内する。"
+            "ネットワークの許可も環境変数も無い。初めてなら docs/setup.md の 2 から案内する。"
+            "準備は済んでいると保護者が言うなら、連絡帳専用の「codmon」ではない環境（Default など）で始めた可能性が高いので、"
+            "「codmon」の環境で新しいセッションを始め直すよう案内する。"
         )
 
     ready = not network_blocked and not missing_env and piyolog["state"] == "ok" and codmon["state"] == "ok"
@@ -125,6 +128,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
 
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
+    local_env.load()
     missing_env = check_env()
     piyolog = check_piyolog()
     codmon = check_codmon()
