@@ -14,6 +14,8 @@ import sys
 import urllib.error
 import urllib.request
 
+import local_env
+
 TIMEOUT_SEC = 8
 CODMON_URL = "https://parents.codmon.com/"
 PIYOLOG_FEED_PREFIX = "https://feed.piyolog.com/v1/feed/"
@@ -118,6 +120,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
 
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
+    local_env.load()
     missing_env = check_env()
     piyolog = check_piyolog()
     codmon = check_codmon()
