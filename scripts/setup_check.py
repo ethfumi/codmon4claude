@@ -1,0 +1,137 @@
+"""セッションの始まりに、使う前の準備がそろっているかを点検する。
+
+Claude Code の SessionStart フックから呼ばれ、結果を Claude への補足として返す。
+Claude はこの結果を見て、足りない準備を保護者に 1 つずつ案内する。
+
+子どもの記録の中身は出さない。ぴよログから取れた件数だけを返す。
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+TIMEOUT_SEC = 8
+CODMON_URL = "https://parents.codmon.com/"
+PIYOLOG_FEED_PREFIX = "https://feed.piyolog.com/v1/feed/"
+
+REQUIRED_ENV = {
+    "PIYOLOG_FEED_URL": "ぴよログのデータフィードの URL",
+    "CODMON_EMAIL": "コドモンにログインするメールアドレス",
+    "CODMON_PASSWORD": "コドモンのパスワード",
+}
+
+
+def fetch(url: str) -> tuple[str, int | None, bytes]:
+    """URL を GET して (状態, HTTP ステータス, 本文) を返す。
+
+    状態は ok / http_error / blocked / unreachable のどれか。
+    blocked は、クラウド環境のネットワーク設定で外へ出られなかった場合。
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": "codmon4claude-setup-check"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SEC) as res:
+            return "ok", res.status, res.read()
+    except urllib.error.HTTPError as e:
+        return "http_error", e.code, e.read()
+    except urllib.error.URLError as e:
+        reason = str(e.reason)
+        # クラウド環境のプロキシに止められると、CONNECT が 403 で返る
+        if "Tunnel connection failed" in reason or "403" in reason:
+            return "blocked", None, b""
+        return "unreachable", None, b""
+    except OSError:
+        return "unreachable", None, b""
+
+
+def check_env() -> list[str]:
+    return [name for name in REQUIRED_ENV if not os.environ.get(name, "").strip()]
+
+
+def check_piyolog() -> dict:
+    url = os.environ.get("PIYOLOG_FEED_URL", "").strip()
+    if not url:
+        # URL が無くても、ネットワーク設定で止められていないかだけは確かめる
+        state, _, _ = fetch(PIYOLOG_FEED_PREFIX + "24h/check/check")
+        return {"state": "blocked" if state == "blocked" else "no_url"}
+    if not url.startswith(PIYOLOG_FEED_PREFIX):
+        return {"state": "bad_url"}
+    state, status, body = fetch(url)
+    if state == "ok":
+        try:
+            data = json.loads(body)
+            return {"state": "ok", "records": len(data.get("records", []))}
+        except ValueError:
+            return {"state": "bad_response"}
+    if state == "http_error" and status == 404:
+        # URL の間違い・期限切れ・失効がすべて 404 になる
+        return {"state": "feed_unavailable"}
+    return {"state": state, "status": status}
+
+
+def check_codmon() -> dict:
+    state, status, _ = fetch(CODMON_URL)
+    return {"state": state, "status": status}
+
+
+def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
+    lines = ["# codmon4claude の準備の点検結果", ""]
+
+    network_blocked = piyolog.get("state") == "blocked" or codmon.get("state") == "blocked"
+    lines.append(f"- ネットワーク: {'外へ出られない（設定が要る）' if network_blocked else 'OK'}")
+    if missing_env:
+        names = "、".join(f"{n}（{REQUIRED_ENV[n]}）" for n in missing_env)
+        lines.append(f"- 環境変数: 足りない → {names}")
+    else:
+        lines.append("- 環境変数: OK")
+
+    piyolog_text = {
+        "ok": f"OK（直近の記録 {piyolog.get('records')} 件）",
+        "no_url": "URL が未設定",
+        "bad_url": "URL の形が違う（https://feed.piyolog.com/v1/feed/ で始まるはず）",
+        "feed_unavailable": "URL が無効（打ち間違い・期限切れ・失効のどれか）",
+        "blocked": "ネットワーク設定で止められている",
+        "bad_response": "応答が読めない",
+    }.get(piyolog["state"], f"つながらない（{piyolog['state']} {piyolog.get('status') or ''}）")
+    lines.append(f"- ぴよログ: {piyolog_text}")
+
+    codmon_text = {
+        "ok": "OK",
+        "blocked": "ネットワーク設定で止められている",
+    }.get(codmon["state"], f"つながらない（{codmon['state']} {codmon.get('status') or ''}）")
+    lines.append(f"- コドモン: {codmon_text}")
+
+    ready = not network_blocked and not missing_env and piyolog["state"] == "ok" and codmon["state"] == "ok"
+    lines.append("")
+    if ready:
+        lines.append("準備はそろっている。保護者が写真を上げたら、連絡帳の入力を始めてよい。")
+    else:
+        lines.append(
+            "準備が足りない。docs/setup.md の手順のうち、足りない所だけを、上から 1 つずつ保護者に案内する。"
+            "貼る文字はコードブロックで出し、手で打たせない。"
+        )
+    return "\n".join(lines)
+
+
+def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")
+    missing_env = check_env()
+    piyolog = check_piyolog()
+    codmon = check_codmon()
+    report = build_report(missing_env, piyolog, codmon)
+    if "--human" in sys.argv:
+        print(report)
+        return
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": report,
+        }
+    }, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

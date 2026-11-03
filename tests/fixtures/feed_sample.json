@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-02T22:30:00.000Z",
+  "range": {"from": "2026-11-01T22:30:00.000Z", "to": "2026-11-02T22:30:00.000Z"},
+  "records": [
+    {"event_id": "s-01", "datetime": "2026-11-02T09:30:00.000Z", "type": "Meal", "memo": "カレー半分"},
+    {"event_id": "s-02", "datetime": "2026-11-02T10:00:00.000Z", "type": "Drink", "value": {"value": 100, "unit": "ml"}},
+    {"event_id": "s-03", "datetime": "2026-11-02T11:00:00.000Z", "type": "Bath"},
+    {"event_id": "s-04", "datetime": "2026-11-02T11:45:00.000Z", "type": "Sleep"},
+    {"event_id": "s-05", "datetime": "2026-11-02T21:00:00.000Z", "type": "WakeUp"},
+    {"event_id": "s-06", "datetime": "2026-11-02T21:10:00.000Z", "type": "Temperature", "value": {"value": 36.8, "unit": "celsius"}},
+    {"event_id": "s-07", "datetime": "2026-11-02T21:20:00.000Z", "type": "Poop", "details": {"amount": "normal", "hardness": "soft", "color": "brown"}},
+    {"event_id": "s-08", "datetime": "2026-11-02T21:25:00.000Z", "type": "Pee"},
+    {"event_id": "s-09", "datetime": "2026-11-02T21:30:00.000Z", "type": "Pee"},
+    {"event_id": "s-10", "datetime": "2026-11-02T21:40:00.000Z", "type": "Cough", "memo": "朝だけ少し"},
+    {"event_id": "s-11", "datetime": "2026-11-02T21:50:00.000Z", "type": "Memo", "memo": "替えの靴下を持たせた"},
+    {"event_id": "s-12", "datetime": "2026-11-02T22:00:00.000Z", "type": "Custom3"}
+  ]
+}
