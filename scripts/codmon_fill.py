@@ -76,32 +76,67 @@ def mismatches(draft: dict, values: dict) -> list[str]:
     return [k for k, label in pairs.items() if draft.get(k) and values.get(label, "").strip() != draft[k].strip()]
 
 
+# 入力に要らない読み込み（画像・フォント・計測）を止めて速くする
+SKIP_TYPES = {"image", "media", "font"}
+SKIP_HOSTS = ("googletagmanager.com", "google-analytics.com", "newrelic.com", "nr-data.net", "paidy.com")
+
+
+def skip_extras(context) -> None:
+    def route(r):
+        if r.request.resource_type in SKIP_TYPES or any(h in r.request.url for h in SKIP_HOSTS):
+            return r.abort()
+        return r.continue_()
+    context.route("**/*", route)
+
+
+def contact_tab(page):
+    return page.get_by_text("連絡", exact=True).last
+
+
 def login(page) -> None:
-    page.goto(LOGIN_URL, wait_until="networkidle")
-    page.get_by_text("すでにアカウントをお持ちの方").click()
-    page.wait_for_selector("input[type=password]")
-    page.wait_for_timeout(1500)
-    page.locator("input[placeholder='メールアドレス']").fill(os.environ["CODMON_EMAIL"])
-    page.locator("input[type=password]").fill(os.environ["CODMON_PASSWORD"])
-    page.get_by_text("ログインする", exact=True).click()
+    """ログインして、下のタブが出るまで待つ。ログイン済みならそのまま。"""
+    page.goto(LOGIN_URL, wait_until="domcontentloaded")
+    chooser = page.get_by_text("すでにアカウントをお持ちの方")
+    chooser.or_(contact_tab(page)).first.wait_for(timeout=30000)
+    if chooser.is_visible():
+        chooser.click()
+        email = page.locator("input[placeholder='メールアドレス']")
+        password = page.locator("input[type=password]")
+        for _ in range(3):
+            # 画面が出た直後は、入れた文字が消される事があるので、残ったか確かめる
+            email.fill(os.environ["CODMON_EMAIL"])
+            password.fill(os.environ["CODMON_PASSWORD"])
+            page.wait_for_timeout(200)
+            if email.input_value() and password.input_value():
+                break
+        page.get_by_text("ログインする", exact=True).click()
     page.wait_for_url("**/home", timeout=30000)
-    page.wait_for_timeout(2000)
+    contact_tab(page).wait_for(timeout=30000)
 
 
 def open_contact(page) -> None:
-    """連絡帳を開き、画面の日付が日本の今日か確かめる。"""
-    page.goto(CONTACT_URL, wait_until="networkidle")
-    if page.get_by_text("すでにアカウントをお持ちの方").count():
-        # ログインが切れて最初の画面に戻った
+    """下のタブから連絡帳を開き、画面の日付が日本の今日か確かめる。
+
+    URL を直接開くと保存済みの内容が出るまで 6 秒ほどかかるが、タブからだと 1 秒ほどで出る。
+    """
+    if not contact_tab(page).is_visible():
         login(page)
-        page.goto(CONTACT_URL, wait_until="networkidle")
-    page.wait_for_selector("textarea[placeholder='食事内容']", timeout=30000)
-    # 保存済みの内容は欄が出た後に遅れて読み込まれるので待つ
-    page.wait_for_timeout(5000)
+    contact_tab(page).click()
+    meal = page.locator("textarea[placeholder='食事内容']").first
+    meal.wait_for(timeout=30000)
     want = today_label()
-    shown = page.get_by_text(want, exact=True)
-    if not shown.count():
+    if not page.get_by_text(want, exact=True).count():
         raise SystemExit(f"連絡帳の日付が今日（{want}）ではありません。時計か画面の作りを確かめてください")
+    # 保存済みの内容は欄が出た少し後に入る。入ったらすぐ進み、空の日は 3 秒だけ待つ
+    for _ in range(15):
+        if meal.input_value() or any_selected(page):
+            page.wait_for_timeout(300)
+            return
+        page.wait_for_timeout(200)
+
+
+def any_selected(page) -> bool:
+    return page.evaluate("() => [...document.querySelectorAll('select')].slice(1, 9).some(s => s.value !== '')")
 
 
 def selects_by_placeholder(page) -> dict[str, list]:
@@ -226,6 +261,7 @@ def main() -> None:
             launch["channel"] = "chrome"
         browser = pw.chromium.launch(**launch)
         context = browser.new_context(viewport={"width": 420, "height": 900}, locale="ja-JP", timezone_id="Asia/Tokyo")
+        skip_extras(context)
         page = context.new_page()
         login(page)
         open_contact(page)
@@ -256,12 +292,17 @@ def main() -> None:
             sys.exit(3)
         result = {"date": today_label(), "filled": done, "values": values, "saved": False}
         if a.save:
-            page.get_by_text("下書き保存", exact=True).first.click()
-            page.wait_for_timeout(3000)
+            try:
+                # 保存の通信が返るまで待つ
+                with page.expect_response(lambda r: r.request.method != "GET" and "ps-api.codmon.com" in r.url, timeout=15000):
+                    page.get_by_text("下書き保存", exact=True).first.click()
+            except Exception:
+                page.wait_for_timeout(3000)
             SHOT_DIR.mkdir(exist_ok=True)
             page.screenshot(path=str(SHOT_DIR / "codmon_fill.png"), full_page=True)
-            # 開き直して、保存された値を読む
+            # 開き直して、保存された値を読む（ログインは同じまま、新しいタブで開く）
             again = context.new_page()
+            again.goto(LOGIN_URL, wait_until="domcontentloaded")
             open_contact(again)
             result["values"] = read_back(again)
             bad = mismatches(draft, result["values"])
