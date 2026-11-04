@@ -21,6 +21,11 @@ draft.json の形（書かない欄はそのまま）:
     }
 
 時刻は 15 分刻み、体温は 0.1℃刻みに丸めて選ぶ。欄の一覧は docs/codmon-form.md。
+お迎えは「時間」と「誰」を改行で分ける（"13時\nママ"）。
+
+ブラウザは日本時間で開き、画面の日付が日本の今日でなければ止まる
+（クラウドの時計は UTC なので、そのままだと朝 9 時前は前の日の連絡帳が開く）。
+保存した後は開き直して、入れた値が残っているかを確かめる。
 """
 
 from __future__ import annotations
@@ -29,6 +34,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import local_env
@@ -37,6 +43,8 @@ LOGIN_URL = "https://parents.codmon.com/"
 CONTACT_URL = "https://parents.codmon.com/contact"
 POOP_STATES = ["普通", "軟便", "少量便", "硬便", "下痢便"]
 SHOT_DIR = Path(__file__).resolve().parent.parent / "tmp"
+JST = timezone(timedelta(hours=9))
+WEEKDAYS = "月火水木金土日"
 
 
 def round_time(hm: str, step: int = 15) -> str:
@@ -53,6 +61,21 @@ def count_label(n: int) -> str:
     return f"{min(max(int(n), 0), 3)}回"
 
 
+def date_label(d: datetime) -> str:
+    """コドモンの画面の日付の書き方（例: 11月5日(木)）。"""
+    return f"{d.month}月{d.day}日({WEEKDAYS[d.weekday()]})"
+
+
+def today_label() -> str:
+    return date_label(datetime.now(JST))
+
+
+def mismatches(draft: dict, values: dict) -> list[str]:
+    """下書きの文字の欄のうち、画面の値と食い違っている物を返す（入れたはずの欄が空になる事があった）。"""
+    pairs = {"meal_night": "食事 夜", "meal_morning": "食事 朝", "pickup": "お迎え", "comment": "コメント"}
+    return [k for k, label in pairs.items() if draft.get(k) and values.get(label, "").strip() != draft[k].strip()]
+
+
 def login(page) -> None:
     page.goto(LOGIN_URL, wait_until="networkidle")
     page.get_by_text("すでにアカウントをお持ちの方").click()
@@ -63,6 +86,22 @@ def login(page) -> None:
     page.get_by_text("ログインする", exact=True).click()
     page.wait_for_url("**/home", timeout=30000)
     page.wait_for_timeout(2000)
+
+
+def open_contact(page) -> None:
+    """連絡帳を開き、画面の日付が日本の今日か確かめる。"""
+    page.goto(CONTACT_URL, wait_until="networkidle")
+    if page.get_by_text("すでにアカウントをお持ちの方").count():
+        # ログインが切れて最初の画面に戻った
+        login(page)
+        page.goto(CONTACT_URL, wait_until="networkidle")
+    page.wait_for_selector("textarea[placeholder='食事内容']", timeout=30000)
+    # 保存済みの内容は欄が出た後に遅れて読み込まれるので待つ
+    page.wait_for_timeout(5000)
+    want = today_label()
+    shown = page.get_by_text(want, exact=True)
+    if not shown.count():
+        raise SystemExit(f"連絡帳の日付が今日（{want}）ではありません。時計か画面の作りを確かめてください")
 
 
 def selects_by_placeholder(page) -> dict[str, list]:
@@ -78,6 +117,15 @@ def selects_by_placeholder(page) -> dict[str, list]:
 
 def textarea(page, placeholder: str, nth: int = 0):
     return page.locator("textarea").filter(has=page.locator(f"xpath=self::*[@placeholder={json.dumps(placeholder)}]")).nth(nth)
+
+
+def type_into(el, text: str) -> None:
+    """fill だけだと、続けて入れた別の欄の値が画面に残らない事があったので、打って欄を離れる。"""
+    el.click()
+    el.fill("")
+    el.press_sequentially(text)
+    el.blur()
+    el.page.wait_for_timeout(300)
 
 
 def fill(page, draft: dict) -> list[str]:
@@ -100,7 +148,7 @@ def fill(page, draft: dict) -> list[str]:
 
     for i, key in enumerate(("meal_night", "meal_morning")):
         if draft.get(key):
-            page.locator("textarea[placeholder='食事内容']").nth(i).fill(draft[key])
+            type_into(page.locator("textarea[placeholder='食事内容']").nth(i), draft[key])
             done.append(key)
 
     if draft.get("sleep"):
@@ -120,11 +168,11 @@ def fill(page, draft: dict) -> list[str]:
         done.append("temperature")
 
     if draft.get("pickup"):
-        page.locator("textarea[placeholder='時間\\n誰'], textarea[placeholder^='時間']").first.fill(draft["pickup"])
+        type_into(page.locator("textarea[placeholder^='時間']").first, draft["pickup"])
         done.append("pickup")
 
     if draft.get("comment"):
-        page.locator("textarea[placeholder='お子さまの様子について']").fill(draft["comment"])
+        type_into(page.locator("textarea[placeholder='お子さまの様子について']"), draft["comment"])
         done.append("comment")
     return done
 
@@ -177,31 +225,51 @@ def main() -> None:
         else:
             launch["channel"] = "chrome"
         browser = pw.chromium.launch(**launch)
-        page = browser.new_page(viewport={"width": 420, "height": 900}, locale="ja-JP")
+        context = browser.new_context(viewport={"width": 420, "height": 900}, locale="ja-JP", timezone_id="Asia/Tokyo")
+        page = context.new_page()
         login(page)
-        page.goto(CONTACT_URL, wait_until="networkidle")
-        page.wait_for_selector("textarea[placeholder='食事内容']", timeout=30000)
-        # 保存済みの内容は欄が出た後に遅れて読み込まれるので待つ
-        page.wait_for_timeout(5000)
+        open_contact(page)
         existing = read_back(page)
         if a.read:
             browser.close()
-            print(json.dumps({"existing": existing}, ensure_ascii=False, indent=2))
+            print(json.dumps({"date": today_label(), "existing": existing}, ensure_ascii=False, indent=2))
             return
+        if "送信済" in page.locator("body").inner_text():
+            browser.close()
+            print(json.dumps({"stopped": "今日の連絡帳はもう送信済みなので何も変えていない", "existing": existing}, ensure_ascii=False, indent=2))
+            sys.exit(2)
         if has_content(existing) and not a.overwrite:
             browser.close()
             print(json.dumps({"stopped": "すでに内容が入っているので何も変えていない", "existing": existing}, ensure_ascii=False, indent=2))
             sys.exit(2)
         done = fill(page, draft)
-        result = {"filled": done, "values": read_back(page)}
+        values = read_back(page)
+        bad = mismatches(draft, values)
+        if bad:
+            # もう一度だけ入れ直す
+            fill(page, {k: draft[k] for k in bad})
+            values = read_back(page)
+            bad = mismatches(draft, values)
+        if bad:
+            browser.close()
+            print(json.dumps({"stopped": "入れた値が画面に残らなかったので保存していない", "fields": bad, "values": values}, ensure_ascii=False, indent=2))
+            sys.exit(3)
+        result = {"date": today_label(), "filled": done, "values": values, "saved": False}
         if a.save:
-            page.get_by_role("button", name="下書き保存").click()
+            page.get_by_text("下書き保存", exact=True).first.click()
             page.wait_for_timeout(3000)
+            SHOT_DIR.mkdir(exist_ok=True)
+            page.screenshot(path=str(SHOT_DIR / "codmon_fill.png"), full_page=True)
+            # 開き直して、保存された値を読む
+            again = context.new_page()
+            open_contact(again)
+            result["values"] = read_back(again)
+            bad = mismatches(draft, result["values"])
+            if bad:
+                browser.close()
+                print(json.dumps({"stopped": "保存した後に開き直すと値が残っていなかった", "fields": bad, **result}, ensure_ascii=False, indent=2))
+                sys.exit(3)
             result["saved"] = True
-        else:
-            result["saved"] = False
-        SHOT_DIR.mkdir(exist_ok=True)
-        page.screenshot(path=str(SHOT_DIR / "codmon_fill.png"), full_page=True)
         browser.close()
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
