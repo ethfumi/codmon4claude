@@ -36,7 +36,7 @@
 ## 開発
 
 - 連絡帳の会話で不具合に気づいても、自分からリポジトリを変更しない。コミット・push・PR を作らず、相手に短く伝えて、できる範囲で連絡帳を進める。変更するのは、開発を頼まれた時だけ
-- 開発する環境には `CODMON_DEV=1` を入れる（手元は `.env`、クラウドは環境の設定）。これが無い会話では、`scripts/block_repo_changes.py` がコミット・push・PR の操作を止める
+- `scripts/block_repo_changes.py` が、GitHub のユーザー名が開発者（`ethfumi`）でない会話のコミット・push・PR の操作を止める
 - `main` へ直接 push しない。ブランチから PR を作り、merge commit でマージする
 - 開発を頼まれた時は、実装が終わったら、確認を待たずに PR を作ってマージしてよい。テストは `python -m unittest discover -s tests`
 - このリポジトリは公開する。コミットメッセージと PR の本文に、クラウドセッションのリンク（`Claude-Session:` の行、`claude.ai/code/session_...`）を入れない
