@@ -4,9 +4,13 @@
     python3 scripts/codmon_fill.py draft.json           # 埋めるだけ（保存しない）。埋まった値を表示する
     python3 scripts/codmon_fill.py draft.json --save    # 埋めて「下書き保存」を押す
     python3 scripts/codmon_fill.py --read               # 今入っている内容を表示するだけ
+    python3 scripts/codmon_fill.py draft.json --save --date 2026-11-06   # 日付を指定する
 
-その日の連絡帳にすでに内容が入っている時は、何も変えずに止まり、入っている内容を表示する。
+draft.json に書いた欄だけを変える。書かない欄は入っている内容のまま残るので、夜と朝に分けて少しずつ入れられる。
+書いた欄に別の内容がすでに入っている時は、何も変えずに止まり、入っている内容を表示する。
 上書きしてよいと保護者が言った時だけ --overwrite を付ける。
+
+日付を指定しない時は、午前は今日、12 時以降は明日の連絡帳を開く（夜に入れる分は、次の朝に出す連絡帳に入れる）。
 
 draft.json の形（書かない欄はそのまま）:
     {
@@ -23,7 +27,7 @@ draft.json の形（書かない欄はそのまま）:
 時刻は 15 分刻み、体温は 0.1℃刻みに丸めて選ぶ。欄の一覧は docs/codmon-form.md。
 お迎えは「時間」と「誰」を改行で分ける（"13時\nママ"）。
 
-ブラウザは日本時間で開き、画面の日付が日本の今日でなければ止まる
+ブラウザは日本時間で開き、画面の日付が開きたい日にならなければ止まる
 （クラウドの時計は UTC なので、そのままだと朝 9 時前は前の日の連絡帳が開く）。
 保存した後は開き直して、入れた値が残っているかを確かめる。
 """
@@ -66,14 +70,68 @@ def date_label(d: datetime) -> str:
     return f"{d.month}月{d.day}日({WEEKDAYS[d.weekday()]})"
 
 
-def today_label() -> str:
-    return date_label(datetime.now(JST))
+def short_label(d: datetime) -> str:
+    """画面の上の、前の日・次の日のボタンの書き方（例: 5(木)）。"""
+    return f"{d.day}({WEEKDAYS[d.weekday()]})"
+
+
+def default_target(now: datetime) -> datetime:
+    """開く連絡帳の日付。午前は今日、12 時以降は次の朝に出す明日の分。"""
+    return now + timedelta(days=1) if now.hour >= 12 else now
+
+
+def expected_parts(draft: dict) -> dict[str, list[tuple[int, str]]]:
+    """下書きの選ぶ欄を、read_back の値の何番目の部分に入るかと一緒に並べる。"""
+    out: dict[str, list[tuple[int, str]]] = {}
+    for key, label in (("poop_night", "排便 夜"), ("poop_morning", "排便 朝")):
+        v = draft.get(key) or {}
+        parts = []
+        if v.get("state"):
+            parts.append((0, v["state"]))
+        if v.get("count") is not None:
+            parts.append((1, count_label(v["count"])))
+        if parts:
+            out[label] = parts
+    s = draft.get("sleep") or {}
+    parts = [(i, round_time(s[k])) for i, k in enumerate(("bed", "wake")) if s.get(k)]
+    if parts:
+        out["睡眠"] = parts
+    t = draft.get("temperature") or {}
+    parts = []
+    if t.get("celsius") is not None:
+        parts.append((0, temp_label(t["celsius"])))
+    if t.get("time"):
+        parts.append((1, round_time(t["time"])))
+    if parts:
+        out["体温"] = parts
+    return out
+
+
+SELECT_SPLIT = {"排便 夜": " / ", "排便 朝": " / ", "睡眠": " 〜 ", "体温": " ("}
+PLACEHOLDERS = {"状態", "回数", "入眠", "起床", "体温", "測定時間", ""}
+TEXT_FIELDS = {"meal_night": "食事 夜", "meal_morning": "食事 朝", "pickup": "お迎え", "comment": "コメント"}
+
+
+def conflicts(draft: dict, existing: dict) -> list[str]:
+    """下書きに書いた欄のうち、別の内容がすでに入っている欄の名前を返す。同じ内容や空の欄は含めない。"""
+    out = []
+    for key, label in TEXT_FIELDS.items():
+        now = existing.get(label, "").strip()
+        if draft.get(key) and now and now != draft[key].strip():
+            out.append(label)
+    for label, parts in expected_parts(draft).items():
+        have = [x.strip(" )") for x in existing.get(label, "").split(SELECT_SPLIT[label])]
+        for i, want in parts:
+            now = have[i] if i < len(have) else ""
+            if now not in PLACEHOLDERS and now != want:
+                out.append(label)
+                break
+    return out
 
 
 def mismatches(draft: dict, values: dict) -> list[str]:
     """下書きの文字の欄のうち、画面の値と食い違っている物を返す（入れたはずの欄が空になる事があった）。"""
-    pairs = {"meal_night": "食事 夜", "meal_morning": "食事 朝", "pickup": "お迎え", "comment": "コメント"}
-    return [k for k, label in pairs.items() if draft.get(k) and values.get(label, "").strip() != draft[k].strip()]
+    return [k for k, label in TEXT_FIELDS.items() if draft.get(k) and values.get(label, "").strip() != draft[k].strip()]
 
 
 # 入力に要らない読み込み（画像・フォント・計測）を止めて速くする
@@ -114,8 +172,8 @@ def login(page) -> None:
     contact_tab(page).wait_for(timeout=30000)
 
 
-def open_contact(page) -> None:
-    """下のタブから連絡帳を開き、画面の日付が日本の今日か確かめる。
+def open_contact(page, target: datetime) -> None:
+    """下のタブから連絡帳を開き、画面の上のボタンで target の日付まで移る。
 
     URL を直接開くと保存済みの内容が出るまで 6 秒ほどかかるが、タブからだと 1 秒ほどで出る。
     """
@@ -123,10 +181,17 @@ def open_contact(page) -> None:
         login(page)
     contact_tab(page).click()
     meal = page.locator("textarea[placeholder='食事内容']").first
-    meal.wait_for(timeout=30000)
-    want = today_label()
-    if not page.get_by_text(want, exact=True).count():
-        raise SystemExit(f"連絡帳の日付が今日（{want}）ではありません。時計か画面の作りを確かめてください")
+    # 送信済みの日は欄が隠れているので、見えるまでは待たない
+    meal.wait_for(state="attached", timeout=30000)
+    today = datetime.now(JST)
+    if not page.get_by_text(date_label(today), exact=True).count():
+        raise SystemExit(f"連絡帳の日付が今日（{date_label(today)}）ではありません。時計か画面の作りを確かめてください")
+    days = (target.date() - today.date()).days
+    step = 1 if days > 0 else -1
+    for i in range(abs(days)):
+        d = today + timedelta(days=step * (i + 1))
+        page.get_by_text(short_label(d), exact=True).first.click()
+        page.get_by_text(date_label(d), exact=True).first.wait_for(timeout=15000)
     # 保存済みの内容は欄が出た少し後に入る。入ったらすぐ進み、空の日は 3 秒だけ待つ
     for _ in range(15):
         if meal.input_value() or any_selected(page):
@@ -232,17 +297,13 @@ def read_back(page) -> dict:
     }
 
 
-def has_content(values: dict) -> bool:
-    empty = {"", "状態 / 回数", "入眠 〜 起床", "体温 (測定時間)"}
-    return any(v.strip() not in empty for v in values.values())
-
-
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     local_env.load()
     p = argparse.ArgumentParser()
     p.add_argument("draft", nargs="?")
     p.add_argument("--read", action="store_true", help="今入っている内容を表示するだけ")
+    p.add_argument("--date", help="開く連絡帳の日付（YYYY-MM-DD）。省略時は午前は今日、12 時以降は明日")
     p.add_argument("--overwrite", action="store_true", help="すでに入っている内容を上書きする")
     p.add_argument("--save", action="store_true", help="「下書き保存」を押す（送信はしない）")
     p.add_argument("--headed", action="store_true")
@@ -250,6 +311,9 @@ def main() -> None:
     if not a.read and not a.draft:
         p.error("draft.json を指定するか --read を付けてください")
     draft = json.loads(Path(a.draft).read_text(encoding="utf-8")) if a.draft else {}
+    now = datetime.now(JST)
+    target = datetime.strptime(a.date, "%Y-%m-%d").replace(tzinfo=JST) if a.date else default_target(now)
+    target_label = date_label(target)
 
     from playwright.sync_api import sync_playwright
 
@@ -264,19 +328,21 @@ def main() -> None:
         skip_extras(context)
         page = context.new_page()
         login(page)
-        open_contact(page)
+        open_contact(page, target)
         existing = read_back(page)
         if a.read:
             browser.close()
-            print(json.dumps({"date": today_label(), "existing": existing}, ensure_ascii=False, indent=2))
+            print(json.dumps({"date": target_label, "existing": existing}, ensure_ascii=False, indent=2))
             return
-        if "送信済" in page.locator("body").inner_text():
+        editable = page.locator("textarea[placeholder='食事内容']").first.is_visible()
+        if not editable or "送信済" in page.locator("body").inner_text():
             browser.close()
-            print(json.dumps({"stopped": "今日の連絡帳はもう送信済みなので何も変えていない", "existing": existing}, ensure_ascii=False, indent=2))
+            print(json.dumps({"stopped": f"{target_label}の連絡帳はもう送信済みなので何も変えていない", "existing": existing}, ensure_ascii=False, indent=2))
             sys.exit(2)
-        if has_content(existing) and not a.overwrite:
+        clash = conflicts(draft, existing)
+        if clash and not a.overwrite:
             browser.close()
-            print(json.dumps({"stopped": "すでに内容が入っているので何も変えていない", "existing": existing}, ensure_ascii=False, indent=2))
+            print(json.dumps({"stopped": "別の内容が入っている欄があるので何も変えていない", "date": target_label, "fields": clash, "existing": existing}, ensure_ascii=False, indent=2))
             sys.exit(2)
         done = fill(page, draft)
         values = read_back(page)
@@ -290,7 +356,7 @@ def main() -> None:
             browser.close()
             print(json.dumps({"stopped": "入れた値が画面に残らなかったので保存していない", "fields": bad, "values": values}, ensure_ascii=False, indent=2))
             sys.exit(3)
-        result = {"date": today_label(), "filled": done, "values": values, "saved": False}
+        result = {"date": target_label, "filled": done, "values": values, "saved": False}
         if a.save:
             try:
                 # 保存の通信が返るまで待つ
@@ -303,7 +369,7 @@ def main() -> None:
             # 開き直して、保存された値を読む（ログインは同じまま、新しいタブで開く）
             again = context.new_page()
             again.goto(LOGIN_URL, wait_until="domcontentloaded")
-            open_contact(again)
+            open_contact(again, target)
             result["values"] = read_back(again)
             bad = mismatches(draft, result["values"])
             if bad:
