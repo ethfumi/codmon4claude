@@ -35,6 +35,7 @@ draft.json の形（書かない欄はそのまま）:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -45,6 +46,8 @@ import local_env
 
 LOGIN_URL = "https://parents.codmon.com/"
 CONTACT_URL = "https://parents.codmon.com/contact"
+STATE_DIR = Path(__file__).resolve().parent.parent / "tmp"
+LOGIN_STORAGE_KEYS = {"codmon_parent_id", "CapacitorStorage.codmon_semantic_id", "CapacitorStorage.codmon_client_unique_id", "CapacitorStorage.codmon_following_id"}
 POOP_STATES = ["普通", "軟便", "少量便", "硬便", "下痢便"]
 JST = timezone(timedelta(hours=9))
 WEEKDAYS = "月火水木金土日"
@@ -149,6 +152,41 @@ def mismatches(draft: dict, values: dict) -> list[str]:
 # 入力に要らない読み込み（画像・フォント・計測）を止めて速くする
 SKIP_TYPES = {"image", "media", "font"}
 SKIP_HOSTS = ("googletagmanager.com", "google-analytics.com", "newrelic.com", "nr-data.net", "paidy.com")
+
+
+def login_state_path() -> Path:
+    """同じ会話の 2 回目からログインを省くためのファイル。アカウントごとに分ける。git には入らない。"""
+    name = hashlib.sha256(os.environ["CODMON_EMAIL"].encode()).hexdigest()[:12]
+    return STATE_DIR / f"codmon_login_{name}.json"
+
+
+def login_only(state: dict) -> dict:
+    """ログインに要る物だけを残す。連絡帳の控え（子どもの情報）や翻訳の表は残さない。"""
+    origins = [
+        {"origin": o["origin"], "localStorage": [i for i in o.get("localStorage", []) if i["name"] in LOGIN_STORAGE_KEYS]}
+        for o in state.get("origins", [])
+    ]
+    return {"cookies": state.get("cookies", []), "origins": origins}
+
+
+def new_context(browser, state: dict | None = None):
+    context = browser.new_context(viewport={"width": 420, "height": 900}, locale="ja-JP", timezone_id="Asia/Tokyo", storage_state=state)
+    skip_extras(context)
+    return context
+
+
+def load_login_state() -> dict | None:
+    try:
+        return json.loads(login_state_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def save_login_state(state: dict) -> None:
+    path = login_state_path()
+    STATE_DIR.mkdir(exist_ok=True)
+    path.write_text(json.dumps(state), encoding="utf-8")
+    path.chmod(0o600)
 
 
 def skip_extras(context) -> None:
@@ -351,10 +389,11 @@ def main() -> None:
         else:
             launch["channel"] = "chrome"
         browser = pw.chromium.launch(**launch)
-        context = browser.new_context(viewport={"width": 420, "height": 900}, locale="ja-JP", timezone_id="Asia/Tokyo")
-        skip_extras(context)
+        context = new_context(browser, load_login_state())
         page = context.new_page()
         login(page)
+        state = login_only(context.storage_state())
+        save_login_state(state)
         open_contact(page, target)
         existing = read_back(page)
         if a.read:
@@ -391,9 +430,10 @@ def main() -> None:
                     page.get_by_text("下書き保存", exact=True).first.click()
             except Exception:
                 pass  # 保存できたかは、この後に開き直して確かめる
-            # 開き直して、保存された値を読む（ログインは同じまま、新しいタブで開く）
-            again = context.new_page()
-            again.goto(LOGIN_URL, wait_until="domcontentloaded")
+            # 保存された値を読む。画面は入力中の内容をブラウザの中に控えるので、
+            # 同じ context だと保存できていなくても値が見える。控えの無い context で開く
+            again = new_context(browser, state).new_page()
+            login(again)
             open_contact(again, target)
             result["values"] = read_back(again)
             bad = mismatches(draft, result["values"])
