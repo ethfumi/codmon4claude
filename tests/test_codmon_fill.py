@@ -50,6 +50,11 @@ class CodmonFillTest(unittest.TestCase):
         self.assertEqual(cf.conflicts({"temperature": {"celsius": 36.8, "time": "6:10"}}, existing), [])
         self.assertEqual(cf.conflicts({"temperature": {"celsius": 37.0}}, existing), ["体温"])
 
+    def test_empty_fields(self):
+        values = {"排便 夜": "状態 / 0回", "排便 朝": "状態 / 回数", "食事 夜": "カレー", "食事 朝": "",
+                  "睡眠": "18:30 〜 起床", "体温": "体温 (測定時間)", "お迎え": "", "コメント": ""}
+        self.assertEqual(cf.empty_fields(values), ["排便 夜 状態", "排便 朝 状態", "排便 朝 回数", "食事 朝", "睡眠 起床", "体温", "体温 測定時間", "お迎え", "コメント"])
+
 
 if __name__ == "__main__":
     unittest.main()
