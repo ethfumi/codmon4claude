@@ -30,3 +30,4 @@
 
 - `main` へ直接 push しない。ブランチから PR を作り、merge commit でマージする
 - 実装が終わったら、確認を待たずに PR を作ってマージしてよい。テストは `python -m unittest discover -s tests`
+- このリポジトリは公開する。コミットメッセージと PR の本文に、クラウドセッションのリンク（`Claude-Session:` の行、`claude.ai/code/session_...`）を入れない
