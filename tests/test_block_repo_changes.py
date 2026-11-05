@@ -25,6 +25,12 @@ class BlockRepoChangesTest(unittest.TestCase):
         self.assertFalse(b.is_blocked("mcp__github__get_pull_request", {}))
         self.assertFalse(b.is_blocked("Read", {"file_path": "a"}))
 
+    def test_should_stop(self):
+        self.assertFalse(b.should_stop("ethfumi"))
+        self.assertTrue(b.should_stop("someone-else"))
+        # 分からない時は止めない
+        self.assertFalse(b.should_stop(None))
+
 
 if __name__ == "__main__":
     unittest.main()
