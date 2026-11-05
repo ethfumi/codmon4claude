@@ -26,12 +26,10 @@ class BlockRepoChangesTest(unittest.TestCase):
         self.assertFalse(b.is_blocked("Read", {"file_path": "a"}))
 
     def test_should_stop(self):
-        self.assertFalse(b.should_stop(b.DEVELOPER_EMAIL, None))
-        self.assertTrue(b.should_stop("other@example.com", None))
-        self.assertFalse(b.should_stop(None, "ethfumi"))
-        self.assertTrue(b.should_stop(None, "someone-else"))
-        # 分からない時は止めない
-        self.assertFalse(b.should_stop(None, None))
+        self.assertFalse(b.should_stop("ethfumi"))
+        self.assertTrue(b.should_stop("someone-else"))
+        # 分からない時も止める
+        self.assertTrue(b.should_stop(None))
 
 
 if __name__ == "__main__":
