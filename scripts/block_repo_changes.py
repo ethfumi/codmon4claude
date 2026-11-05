@@ -1,8 +1,7 @@
 """開発者以外のアカウントの会話で、リポジトリを変更する操作を止める。
 
 Claude Code の PreToolUse フックから呼ばれる。連絡帳を使うだけの会話がコミットや PR を作らないようにする。
-クラウドセッションでは Claude のアカウントのメールで、手元では GitHub のユーザー名で開発者かどうかを見る。
-開発者と違う時だけ止める。どちらも分からない時は止めない。
+GitHub のユーザー名が開発者でなければ止める。ユーザー名が分からない時も止める。
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ import sys
 import urllib.request
 
 DEVELOPER = "ethfumi"
-DEVELOPER_EMAIL = "fumilin01@gmail.com"
 BASH_PATTERN = re.compile(r"\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*(commit|push|merge|rebase|tag)\b|\bgh\s+(pr|repo|release)\s+(create|merge|edit|delete|close)\b|\bgh\s+api\b.*(-X|--method)\s*(POST|PUT|PATCH|DELETE)")
 MCP_PATTERN = re.compile(r"github.*(create|update|merge|push|delete|fork)", re.IGNORECASE)
 MESSAGE = "このリポジトリを変更する操作は、開発者の会話でしかできません。変更はせず、気づいたことを相手に短く伝えて、連絡帳を続けてください。"
@@ -47,10 +45,8 @@ def github_login() -> str | None:
         return None
 
 
-def should_stop(email: str | None, login: str | None) -> bool:
-    if email:
-        return email != DEVELOPER_EMAIL
-    return login is not None and login != DEVELOPER
+def should_stop(login: str | None) -> bool:
+    return login != DEVELOPER
 
 
 def main() -> None:
@@ -60,8 +56,7 @@ def main() -> None:
         return
     if not is_blocked(data.get("tool_name", ""), data.get("tool_input") or {}):
         return
-    email = os.environ.get("CLAUDE_CODE_USER_EMAIL")
-    if should_stop(email, None if email else github_login()):
+    if should_stop(github_login()):
         sys.stderr.reconfigure(encoding="utf-8")
         print(MESSAGE, file=sys.stderr)
         sys.exit(2)
