@@ -181,7 +181,8 @@ def open_contact(page, target: datetime) -> None:
         login(page)
     contact_tab(page).click()
     meal = page.locator("textarea[placeholder='食事内容']").first
-    meal.wait_for(timeout=30000)
+    # 送信済みの日は欄が隠れているので、見えるまでは待たない
+    meal.wait_for(state="attached", timeout=30000)
     today = datetime.now(JST)
     if not page.get_by_text(date_label(today), exact=True).count():
         raise SystemExit(f"連絡帳の日付が今日（{date_label(today)}）ではありません。時計か画面の作りを確かめてください")
@@ -333,7 +334,8 @@ def main() -> None:
             browser.close()
             print(json.dumps({"date": target_label, "existing": existing}, ensure_ascii=False, indent=2))
             return
-        if "送信済" in page.locator("body").inner_text():
+        editable = page.locator("textarea[placeholder='食事内容']").first.is_visible()
+        if not editable or "送信済" in page.locator("body").inner_text():
             browser.close()
             print(json.dumps({"stopped": f"{target_label}の連絡帳はもう送信済みなので何も変えていない", "existing": existing}, ensure_ascii=False, indent=2))
             sys.exit(2)
