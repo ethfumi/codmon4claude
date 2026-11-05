@@ -112,6 +112,19 @@ PLACEHOLDERS = {"状態", "回数", "入眠", "起床", "体温", "測定時間"
 TEXT_FIELDS = {"meal_night": "食事 夜", "meal_morning": "食事 朝", "pickup": "お迎え", "comment": "コメント"}
 
 
+def empty_fields(values: dict) -> list[str]:
+    """まだ何も入っていない部分の名前を、画面の並びで返す。"""
+    out = []
+    for label, value in values.items():
+        if label in SELECT_SPLIT:
+            for part in (x.strip(" )") for x in value.split(SELECT_SPLIT[label])):
+                if part in PLACEHOLDERS and part:
+                    out.append(f"{label} {part}" if not label == part else label)
+        elif not value.strip():
+            out.append(label)
+    return out
+
+
 def conflicts(draft: dict, existing: dict) -> list[str]:
     """下書きに書いた欄のうち、別の内容がすでに入っている欄の名前を返す。同じ内容や空の欄は含めない。"""
     out = []
@@ -336,7 +349,7 @@ def main() -> None:
         existing = read_back(page)
         if a.read:
             browser.close()
-            print(json.dumps({"date": target_label, "existing": existing}, ensure_ascii=False, indent=2))
+            print(json.dumps({"date": target_label, "existing": existing, "empty": empty_fields(existing)}, ensure_ascii=False, indent=2))
             return
         editable = page.locator("textarea[placeholder='食事内容']").first.is_visible()
         if not editable or "送信済" in page.locator("body").inner_text():
@@ -381,6 +394,7 @@ def main() -> None:
                 print(json.dumps({"stopped": "保存した後に開き直すと値が残っていなかった", "fields": bad, **result}, ensure_ascii=False, indent=2))
                 sys.exit(3)
             result["saved"] = True
+        result["empty"] = empty_fields(result["values"])
         browser.close()
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
