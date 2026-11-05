@@ -46,7 +46,6 @@ import local_env
 LOGIN_URL = "https://parents.codmon.com/"
 CONTACT_URL = "https://parents.codmon.com/contact"
 POOP_STATES = ["普通", "軟便", "少量便", "硬便", "下痢便"]
-SHOT_DIR = Path(__file__).resolve().parent.parent / "tmp"
 JST = timezone(timedelta(hours=9))
 WEEKDAYS = "月火水木金土日"
 
@@ -185,6 +184,24 @@ def login(page) -> None:
     contact_tab(page).wait_for(timeout=30000)
 
 
+def comments_response(page, d: datetime):
+    """その日の連絡帳の内容が届くのを待つ。click はこの中で行う。"""
+    loaded = f"search_start_display_date={d:%Y-%m-%d}"
+    return page.expect_response(lambda r: r.request.method == "GET" and "/comments" in r.url and loaded in r.url, timeout=15000)
+
+
+def settle(page, meal) -> None:
+    """届いた内容が欄に入るのを待つ。入るまでの実測は 0.02 秒ほど。
+
+    移る前の日の内容を読まないよう 0.1 秒は待ち、0.3 秒たっても入らなければ空の日とする。
+    """
+    page.wait_for_timeout(100)
+    for _ in range(4):
+        if meal.input_value() or any_selected(page):
+            return
+        page.wait_for_timeout(50)
+
+
 def open_contact(page, target: datetime) -> None:
     """下のタブから連絡帳を開き、画面の上のボタンで target の日付まで移る。
 
@@ -192,11 +209,12 @@ def open_contact(page, target: datetime) -> None:
     """
     if not contact_tab(page).is_visible():
         login(page)
-    contact_tab(page).click()
+    today = datetime.now(JST)
+    with comments_response(page, today):
+        contact_tab(page).click()
     meal = page.locator("textarea[placeholder='食事内容']").first
     # 送信済みの日は欄が隠れているので、見えるまでは待たない
     meal.wait_for(state="attached", timeout=30000)
-    today = datetime.now(JST)
     if not page.get_by_text(date_label(today), exact=True).count():
         raise SystemExit(f"連絡帳の日付が今日（{date_label(today)}）ではありません。時計か画面の作りを確かめてください")
     days = (target.date() - today.date()).days
@@ -204,17 +222,10 @@ def open_contact(page, target: datetime) -> None:
     for i in range(abs(days)):
         d = today + timedelta(days=step * (i + 1))
         # 移った直後は前の日の内容が欄に残っているので、その日の内容が届くまで待つ
-        loaded = f"search_start_display_date={d:%Y-%m-%d}"
-        with page.expect_response(lambda r: r.request.method == "GET" and "/comments" in r.url and loaded in r.url, timeout=15000):
+        with comments_response(page, d):
             page.get_by_text(short_label(d), exact=True).first.click()
         page.get_by_text(date_label(d), exact=True).first.wait_for(timeout=15000)
-        page.wait_for_timeout(700)
-    # 保存済みの内容は欄が出た少し後に入る。入ったらすぐ進み、空の日は 3 秒だけ待つ
-    for _ in range(15):
-        if meal.input_value() or any_selected(page):
-            page.wait_for_timeout(300)
-            return
-        page.wait_for_timeout(200)
+    settle(page, meal)
 
 
 def any_selected(page) -> bool:
@@ -242,7 +253,6 @@ def type_into(el, text: str) -> None:
     el.fill("")
     el.press_sequentially(text)
     el.blur()
-    el.page.wait_for_timeout(300)
 
 
 def fill(page, draft: dict) -> list[str]:
@@ -380,9 +390,7 @@ def main() -> None:
                 with page.expect_response(lambda r: r.request.method != "GET" and "ps-api.codmon.com" in r.url, timeout=15000):
                     page.get_by_text("下書き保存", exact=True).first.click()
             except Exception:
-                page.wait_for_timeout(3000)
-            SHOT_DIR.mkdir(exist_ok=True)
-            page.screenshot(path=str(SHOT_DIR / "codmon_fill.png"), full_page=True)
+                pass  # 保存できたかは、この後に開き直して確かめる
             # 開き直して、保存された値を読む（ログインは同じまま、新しいタブで開く）
             again = context.new_page()
             again.goto(LOGIN_URL, wait_until="domcontentloaded")
