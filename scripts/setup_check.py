@@ -109,15 +109,16 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
     if network_blocked and len(missing_env) == len(REQUIRED_ENV):
         lines.append("")
         lines.append(
-            "ネットワークの許可も環境変数も無い。初めてなら docs/setup.md の 2 から案内する。"
-            "準備は済んでいると保護者が言うなら、連絡帳専用の「codmon」ではない環境（Default など）で始めた可能性が高いので、"
-            "「codmon」の環境で新しいセッションを始め直すよう案内する。"
+            "ネットワークの許可も環境変数も無い。どの環境で始めたかは点検では分からない。環境の名前は保護者が自由に付けられる。"
+            "まず、連絡帳専用の環境をもう作ってあるかを聞く。まだなら docs/setup.md の 2 から案内する。"
+            "作ってあって、この会話がその環境なら docs/setup.md の 3 から案内する。"
+            "別の環境（Default など）で始めていたら、連絡帳専用の環境で新しいセッションを始め直すよう案内する。"
         )
     elif not network_blocked and missing_env:
         lines.append("")
         lines.append(
             "ネットワークは通るが環境変数が足りない。環境変数は保存してもすぐには入らない。"
-            "入れたばかりなら、10 分ほど何も送らずに置いてから何か送ってもらうか、「codmon」の環境で新しいセッションを始めてもらう。"
+            "入れたばかりなら、10 分ほど何も送らずに置いてから何か送ってもらうか、連絡帳専用の環境で新しいセッションを始めてもらう。"
             "まだ入れていなければ docs/setup.md の 4 を案内する。"
         )
 
