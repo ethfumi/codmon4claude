@@ -55,6 +55,20 @@ class CodmonFillTest(unittest.TestCase):
                   "睡眠": "18:30 〜 起床", "体温": "体温 (測定時間)", "お迎え": "", "コメント": ""}
         self.assertEqual(cf.empty_fields(values), ["排便 夜 状態", "排便 朝 状態", "排便 朝 回数", "食事 朝", "睡眠 起床", "体温", "体温 測定時間", "お迎え", "コメント"])
 
+    def test_login_only_drops_notebook_copy(self):
+        state = {
+            "cookies": [{"name": "CODMONSESSID"}],
+            "origins": [{"origin": "https://parents.codmon.com", "localStorage": [
+                {"name": "codmon_parent_id", "value": "1"},
+                {"name": "codmon_comments_2026-11-09_1", "value": "child"},
+                {"name": "codmon_translation", "value": "large"},
+            ], "indexedDB": [{"name": "firebase"}]}],
+        }
+        self.assertEqual(cf.login_only(state), {
+            "cookies": [{"name": "CODMONSESSID"}],
+            "origins": [{"origin": "https://parents.codmon.com", "localStorage": [{"name": "codmon_parent_id", "value": "1"}]}],
+        })
+
 
 if __name__ == "__main__":
     unittest.main()
