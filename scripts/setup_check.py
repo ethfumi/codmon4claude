@@ -20,8 +20,8 @@ TIMEOUT_SEC = 8
 CODMON_URL = "https://parents.codmon.com/"
 PIYOLOG_FEED_PREFIX = "https://feed.piyolog.com/v1/feed/"
 
+# ぴよログは使わない家庭もあるので、PIYOLOG_FEED_URL は無くてもよい
 REQUIRED_ENV = {
-    "PIYOLOG_FEED_URL": "ぴよログのデータフィードの URL",
     "CODMON_EMAIL": "コドモンにログインするメールアドレス",
     "CODMON_PASSWORD": "コドモンのパスワード",
 }
@@ -56,9 +56,7 @@ def check_env() -> list[str]:
 def check_piyolog() -> dict:
     url = os.environ.get("PIYOLOG_FEED_URL", "").strip()
     if not url:
-        # URL が無くても、ネットワーク設定で止められていないかだけは確かめる
-        state, _, _ = fetch(PIYOLOG_FEED_PREFIX + "24h/check/check")
-        return {"state": "blocked" if state == "blocked" else "no_url"}
+        return {"state": "not_used"}
     if not url.startswith(PIYOLOG_FEED_PREFIX):
         return {"state": "bad_url"}
     state, status, body = fetch(url)
@@ -92,7 +90,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
 
     piyolog_text = {
         "ok": f"OK（直近の記録 {piyolog.get('records')} 件）",
-        "no_url": "URL が未設定",
+        "not_used": "使っていない（URL が未設定。使う時は docs/setup.md の 1）",
         "bad_url": "URL の形が違う（https://feed.piyolog.com/v1/feed/ で始まるはず）",
         "feed_unavailable": "URL が無効（打ち間違い・期限切れ・失効のどれか）",
         "blocked": "ネットワーク設定で止められている",
@@ -122,7 +120,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
             "まだ入れていなければ docs/setup.md の 4 を案内する。"
         )
 
-    ready = not network_blocked and not missing_env and piyolog["state"] == "ok" and codmon["state"] == "ok"
+    ready = not network_blocked and not missing_env and piyolog["state"] in ("ok", "not_used") and codmon["state"] == "ok"
     lines.append("")
     if ready:
         lines.append("準備はそろっている。保護者が写真を上げたら、連絡帳の入力を始めてよい。")

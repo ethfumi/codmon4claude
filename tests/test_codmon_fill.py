@@ -24,6 +24,32 @@ class CodmonFillTest(unittest.TestCase):
         values["食事 朝"] = "パン、牛乳"
         self.assertEqual(cf.mismatches(draft, values), [])
 
+    def test_default_target(self):
+        self.assertEqual(cf.default_target(datetime(2026, 11, 5, 7, 0)).day, 5)
+        self.assertEqual(cf.default_target(datetime(2026, 11, 5, 20, 0)).day, 6)
+        self.assertEqual(cf.default_target(datetime(2026, 11, 30, 20, 0)).month, 12)
+
+    def test_short_label(self):
+        self.assertEqual(cf.short_label(datetime(2026, 11, 5)), "5(木)")
+
+    def test_conflicts_keeps_other_fields(self):
+        existing = {"排便 夜": "状態 / 回数", "排便 朝": "状態 / 回数", "食事 夜": "カレー", "食事 朝": "",
+                    "睡眠": "入眠 〜 起床", "体温": "体温 (測定時間)", "お迎え": "", "コメント": ""}
+        # 夜に入れた欄はそのまま、朝の欄だけ足す時は止まらない
+        self.assertEqual(cf.conflicts({"meal_morning": "パン"}, existing), [])
+        # 同じ内容なら止まらない
+        self.assertEqual(cf.conflicts({"meal_night": "カレー"}, existing), [])
+        # 別の内容が入っている欄だけ返す
+        self.assertEqual(cf.conflicts({"meal_night": "うどん", "comment": "元気"}, existing), ["食事 夜"])
+
+    def test_conflicts_select_parts(self):
+        existing = {"排便 夜": "普通 / 回数", "睡眠": "20:45 〜 起床", "体温": "36.8℃ (6:15)"}
+        self.assertEqual(cf.conflicts({"poop_night": {"state": "普通", "count": 1}}, existing), [])
+        self.assertEqual(cf.conflicts({"poop_night": {"state": "軟便"}}, existing), ["排便 夜"])
+        self.assertEqual(cf.conflicts({"sleep": {"bed": "20:50", "wake": "6:00"}}, existing), [])
+        self.assertEqual(cf.conflicts({"temperature": {"celsius": 36.8, "time": "6:10"}}, existing), [])
+        self.assertEqual(cf.conflicts({"temperature": {"celsius": 37.0}}, existing), ["体温"])
+
 
 if __name__ == "__main__":
     unittest.main()
