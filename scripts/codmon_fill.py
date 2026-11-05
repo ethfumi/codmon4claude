@@ -190,8 +190,12 @@ def open_contact(page, target: datetime) -> None:
     step = 1 if days > 0 else -1
     for i in range(abs(days)):
         d = today + timedelta(days=step * (i + 1))
-        page.get_by_text(short_label(d), exact=True).first.click()
+        # 移った直後は前の日の内容が欄に残っているので、その日の内容が届くまで待つ
+        loaded = f"search_start_display_date={d:%Y-%m-%d}"
+        with page.expect_response(lambda r: r.request.method == "GET" and "/comments" in r.url and loaded in r.url, timeout=15000):
+            page.get_by_text(short_label(d), exact=True).first.click()
         page.get_by_text(date_label(d), exact=True).first.wait_for(timeout=15000)
+        page.wait_for_timeout(700)
     # 保存済みの内容は欄が出た少し後に入る。入ったらすぐ進み、空の日は 3 秒だけ待つ
     for _ in range(15):
         if meal.input_value() or any_selected(page):
