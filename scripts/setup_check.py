@@ -90,7 +90,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
 
     piyolog_text = {
         "ok": f"OK（直近の記録 {piyolog.get('records')} 件）",
-        "not_used": "使っていない（URL が未設定。使う時は docs/setup.md の 1）",
+        "not_used": "使っていない（URL が未設定。使う時は docs/setup.md の 4）",
         "bad_url": "URL の形が違う（https://feed.piyolog.com/v1/feed/ で始まるはず）",
         "feed_unavailable": "URL が無効（打ち間違い・期限切れ・失効のどれか）",
         "blocked": "ネットワーク設定で止められている",
