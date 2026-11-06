@@ -12,6 +12,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/setup_check.py\"",
             "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] && python3 \"$CLAUDE_PROJECT_DIR/scripts/codmon_browser.py\" start || true",
+            "timeout": 10
           }
         ]
       }
