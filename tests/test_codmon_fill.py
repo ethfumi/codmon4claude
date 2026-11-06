@@ -55,6 +55,13 @@ class CodmonFillTest(unittest.TestCase):
                   "睡眠": "18:30 〜 起床", "体温": "体温 (測定時間)", "お迎え": "", "コメント": ""}
         self.assertEqual(cf.empty_fields(values), ["排便 夜 状態", "排便 朝 状態", "排便 朝 回数", "食事 朝", "睡眠 起床", "体温", "体温 測定時間", "お迎え", "コメント"])
 
+    def test_mismatches_checks_select_fields(self):
+        draft = {"poop_night": {"state": "普通", "count": 1}, "sleep": {"bed": "20:40", "wake": "6:00"}, "temperature": {"celsius": 36.5, "time": "7:10"}}
+        same = {"排便 夜": "普通 / 1回", "睡眠": "20:45 〜 6:00", "体温": "36.5℃ (7:15)"}
+        self.assertEqual(cf.mismatches(draft, same), [])
+        lost = {"排便 夜": "状態 / 回数", "睡眠": "20:45 〜 起床", "体温": "体温 (測定時間)"}
+        self.assertEqual(cf.mismatches(draft, lost), ["poop_night", "sleep", "temperature"])
+
     def test_login_only_drops_notebook_copy(self):
         state = {
             "cookies": [{"name": "CODMONSESSID"}],
