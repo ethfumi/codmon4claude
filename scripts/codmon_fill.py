@@ -112,6 +112,7 @@ def expected_parts(draft: dict) -> dict[str, list[tuple[int, str]]]:
 
 SELECT_SPLIT = {"排便 夜": " / ", "排便 朝": " / ", "睡眠": " 〜 ", "体温": " ("}
 PLACEHOLDERS = {"状態", "回数", "入眠", "起床", "体温", "測定時間", ""}
+SELECT_FIELDS = {"poop_night": "排便 夜", "poop_morning": "排便 朝", "sleep": "睡眠", "temperature": "体温"}
 TEXT_FIELDS = {"meal_night": "食事 夜", "meal_morning": "食事 朝", "pickup": "お迎え", "comment": "コメント"}
 
 
@@ -146,8 +147,15 @@ def conflicts(draft: dict, existing: dict) -> list[str]:
 
 
 def mismatches(draft: dict, values: dict) -> list[str]:
-    """下書きの文字の欄のうち、画面の値と食い違っている物を返す（入れたはずの欄が空になる事があった）。"""
-    return [k for k, label in TEXT_FIELDS.items() if draft.get(k) and values.get(label, "").strip() != draft[k].strip()]
+    """下書きの欄のうち、画面の値と食い違っている物を返す（入れたはずの欄が空になる事があった）。"""
+    out = [k for k, label in TEXT_FIELDS.items() if draft.get(k) and values.get(label, "").strip() != draft[k].strip()]
+    for key, label in SELECT_FIELDS.items():
+        have = [x.strip(" )") for x in values.get(label, "").split(SELECT_SPLIT[label])]
+        for i, want in expected_parts({key: draft.get(key)}).get(label, []):
+            if i >= len(have) or have[i] != want:
+                out.append(key)
+                break
+    return out
 
 
 # 入力に要らない読み込み（画像・フォント・計測）を止めて速くする
