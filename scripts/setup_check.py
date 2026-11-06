@@ -90,7 +90,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
 
     piyolog_text = {
         "ok": f"OK（直近の記録 {piyolog.get('records')} 件）",
-        "not_used": "使っていない（URL が未設定。使う時は docs/setup.md の 4）",
+        "not_used": "使っていない（URL が未設定。使う時は docs/setup.md の 2）",
         "bad_url": "URL の形が違う（https://feed.piyolog.com/v1/feed/ で始まるはず）",
         "feed_unavailable": "URL が無効（打ち間違い・期限切れ・失効のどれか）",
         "blocked": "ネットワーク設定で止められている",
@@ -109,7 +109,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
         lines.append(
             "ネットワークの許可も環境変数も無い。どの環境で始めたかは点検では分からない。環境の名前は保護者が自由に付けられる。"
             "まず、連絡帳専用の環境をもう作ってあるかを聞く。まだなら docs/setup.md の 2 から案内する。"
-            "作ってあって、この会話がその環境なら docs/setup.md の 3 から案内する。"
+            "作ってあって、この会話がその環境なら docs/setup.md の 2 のネットワークの許可から案内する。"
             "別の環境（Default など）で始めていたら、連絡帳専用の環境で新しいセッションを始め直すよう案内する。"
         )
     elif not network_blocked and missing_env:
@@ -117,7 +117,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
         lines.append(
             "ネットワークは通るが環境変数が足りない。環境変数は保存してもすぐには入らない。"
             "入れたばかりなら、10 分ほど何も送らずに置いてから何か送ってもらうか、連絡帳専用の環境で新しいセッションを始めてもらう。"
-            "まだ入れていなければ docs/setup.md の 4 を案内する。"
+            "まだ入れていなければ docs/setup.md の 2 の環境変数を案内する。"
         )
 
     ready = not network_blocked and not missing_env and piyolog["state"] in ("ok", "not_used") and codmon["state"] == "ok"
