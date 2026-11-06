@@ -39,6 +39,7 @@ import hashlib
 import json
 import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -151,7 +152,8 @@ def mismatches(draft: dict, values: dict) -> list[str]:
 
 # 入力に要らない読み込み（画像・フォント・計測）を止めて速くする
 SKIP_TYPES = {"image", "media", "font"}
-SKIP_HOSTS = ("googletagmanager.com", "google-analytics.com", "newrelic.com", "nr-data.net", "paidy.com")
+SKIP_HOSTS = ("googletagmanager.com", "google-analytics.com", "newrelic.com", "nr-data.net", "paidy.com", "firebaseinstallations.googleapis.com")
+CONTEXT_OPTIONS = {"viewport": {"width": 420, "height": 900}, "locale": "ja-JP", "timezone_id": "Asia/Tokyo"}
 
 
 def login_state_path() -> Path:
@@ -169,10 +171,57 @@ def login_only(state: dict) -> dict:
     return {"cookies": state.get("cookies", []), "origins": origins}
 
 
-def new_context(browser, state: dict | None = None):
-    context = browser.new_context(viewport={"width": 420, "height": 900}, locale="ja-JP", timezone_id="Asia/Tokyo", storage_state=state)
-    skip_extras(context)
-    return context
+def launch_options(headless: bool = True) -> dict:
+    options = {"headless": headless}
+    if os.environ.get("CHROME_PATH"):
+        options["executable_path"] = os.environ["CHROME_PATH"]
+    else:
+        options["channel"] = "chrome"
+    return options
+
+
+def prepare_context(context, page, state: dict | None) -> None:
+    """残しておいたログイン状態を、開いているブラウザに入れる。"""
+    if not state:
+        return
+    context.add_cookies(state["cookies"])
+    items = {i["name"]: i["value"] for o in state.get("origins", []) for i in o.get("localStorage", [])}
+    page.add_init_script(f"for (const [k, v] of Object.entries({json.dumps(items)})) localStorage.setItem(k, v)")
+
+
+def attach_kept_browser(pw):
+    """開いたままのブラウザにつなぐ。使えなければ None。"""
+    try:
+        import codmon_browser
+
+        url = codmon_browser.ensure()
+        if not url:
+            return None
+        # 同じページを 2 つのコマンドで動かすと別の日へ入れてしまうので、1 つだけが使う
+        lock = codmon_browser.hold_lock(codmon_browser.USE_LOCK)
+        if not lock:
+            return None
+        browser = pw.chromium.connect_over_cdp(url, timeout=3000)
+        context = browser.contexts[0]
+        skip_extras(context)
+        return browser, context, context.pages[0], lock
+    except Exception:
+        return None
+
+
+def clear_notebook_copy(page) -> None:
+    """画面が localStorage に控えた連絡帳を消す。控えがあると、保存されていない内容も欄に出る。"""
+    page.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('codmon_comments_')).forEach(k => localStorage.removeItem(k))")
+
+
+def open_fresh(page, target: datetime) -> None:
+    """控えを消してホームへ戻り、コドモンから読み直した連絡帳を開く。"""
+    if not contact_tab(page).is_visible():
+        login(page)
+    clear_notebook_copy(page)
+    page.get_by_text("ホーム", exact=True).last.click()
+    page.wait_for_url("**/home", timeout=15000)
+    open_contact(page, target)
 
 
 def load_login_state() -> dict | None:
@@ -222,10 +271,13 @@ def login(page) -> None:
     contact_tab(page).wait_for(timeout=30000)
 
 
+@contextmanager
 def comments_response(page, d: datetime):
-    """その日の連絡帳の内容が届くのを待つ。click はこの中で行う。"""
+    """その日の連絡帳の内容が本文まで届くのを待つ。click はこの中で行う。"""
     loaded = f"search_start_display_date={d:%Y-%m-%d}"
-    return page.expect_response(lambda r: r.request.method == "GET" and "/comments" in r.url and loaded in r.url, timeout=15000)
+    with page.expect_response(lambda r: r.request.method == "GET" and "/comments" in r.url and loaded in r.url, timeout=15000) as info:
+        yield
+    info.value.body()
 
 
 def settle(page, meal) -> None:
@@ -261,7 +313,8 @@ def open_contact(page, target: datetime) -> None:
         d = today + timedelta(days=step * (i + 1))
         # 移った直後は前の日の内容が欄に残っているので、その日の内容が届くまで待つ
         with comments_response(page, d):
-            page.get_by_text(short_label(d), exact=True).first.click()
+            # 保存の直後は通知がボタンに重なり、普通の click だと 3.5 秒ほど待たされる
+            page.get_by_text(short_label(d), exact=True).first.dispatch_event("click")
         page.get_by_text(date_label(d), exact=True).first.wait_for(timeout=15000)
     settle(page, meal)
 
@@ -362,6 +415,45 @@ def read_back(page) -> dict:
     }
 
 
+def work(a, page, target: datetime, draft: dict, target_label: str) -> tuple[dict, int]:
+    open_fresh(page, target)
+    existing = read_back(page)
+    if a.read:
+        return {"date": target_label, "existing": existing, "empty": empty_fields(existing)}, 0
+    editable = page.locator("textarea[placeholder='食事内容']").first.is_visible()
+    if not editable or "送信済" in page.locator("body").inner_text():
+        return {"stopped": f"{target_label}の連絡帳はもう送信済みなので何も変えていない", "existing": existing}, 2
+    clash = conflicts(draft, existing)
+    if clash and not a.overwrite:
+        return {"stopped": "別の内容が入っている欄があるので何も変えていない", "date": target_label, "fields": clash, "existing": existing}, 2
+    done = fill(page, draft)
+    values = read_back(page)
+    bad = mismatches(draft, values)
+    if bad:
+        # もう一度だけ入れ直す
+        fill(page, {k: draft[k] for k in bad})
+        values = read_back(page)
+        bad = mismatches(draft, values)
+    if bad:
+        return {"stopped": "入れた値が画面に残らなかったので保存していない", "fields": bad, "values": values}, 3
+    result = {"date": target_label, "filled": done, "values": values, "saved": False}
+    if a.save:
+        try:
+            # 保存の通信が返るまで待つ
+            with page.expect_response(lambda r: r.request.method != "GET" and "ps-api.codmon.com" in r.url, timeout=15000):
+                page.get_by_text("下書き保存", exact=True).first.click()
+        except Exception:
+            pass  # 保存できたかは、この後に読み直して確かめる
+        open_fresh(page, target)
+        result["values"] = read_back(page)
+        bad = mismatches(draft, result["values"])
+        if bad:
+            return {"stopped": "保存した後に読み直すと値が残っていなかった", "fields": bad, **result}, 3
+        result["saved"] = True
+    result["empty"] = empty_fields(result["values"])
+    return result, 0
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     local_env.load()
@@ -380,71 +472,38 @@ def main() -> None:
     target = datetime.strptime(a.date, "%Y-%m-%d").replace(tzinfo=JST) if a.date else default_target(now)
     target_label = date_label(target)
 
+    for name in ("NO_PROXY", "no_proxy"):
+        os.environ[name] = ",".join(x for x in (os.environ.get(name), "127.0.0.1") if x)
+
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
-        launch = {"headless": not a.headed}
-        if os.environ.get("CHROME_PATH"):
-            launch["executable_path"] = os.environ["CHROME_PATH"]
-        else:
-            launch["channel"] = "chrome"
-        browser = pw.chromium.launch(**launch)
-        context = new_context(browser, load_login_state())
-        page = context.new_page()
-        login(page)
-        state = login_only(context.storage_state())
-        save_login_state(state)
-        open_contact(page, target)
-        existing = read_back(page)
-        if a.read:
-            browser.close()
-            print(json.dumps({"date": target_label, "existing": existing, "empty": empty_fields(existing)}, ensure_ascii=False, indent=2))
-            return
-        editable = page.locator("textarea[placeholder='食事内容']").first.is_visible()
-        if not editable or "送信済" in page.locator("body").inner_text():
-            browser.close()
-            print(json.dumps({"stopped": f"{target_label}の連絡帳はもう送信済みなので何も変えていない", "existing": existing}, ensure_ascii=False, indent=2))
-            sys.exit(2)
-        clash = conflicts(draft, existing)
-        if clash and not a.overwrite:
-            browser.close()
-            print(json.dumps({"stopped": "別の内容が入っている欄があるので何も変えていない", "date": target_label, "fields": clash, "existing": existing}, ensure_ascii=False, indent=2))
-            sys.exit(2)
-        done = fill(page, draft)
-        values = read_back(page)
-        bad = mismatches(draft, values)
-        if bad:
-            # もう一度だけ入れ直す
-            fill(page, {k: draft[k] for k in bad})
-            values = read_back(page)
-            bad = mismatches(draft, values)
-        if bad:
-            browser.close()
-            print(json.dumps({"stopped": "入れた値が画面に残らなかったので保存していない", "fields": bad, "values": values}, ensure_ascii=False, indent=2))
-            sys.exit(3)
-        result = {"date": target_label, "filled": done, "values": values, "saved": False}
-        if a.save:
+        kept = None if a.headed else attach_kept_browser(pw)
+        result, code = None, 0
+        if kept:
+            browser, context, page, lock = kept
             try:
-                # 保存の通信が返るまで待つ
-                with page.expect_response(lambda r: r.request.method != "GET" and "ps-api.codmon.com" in r.url, timeout=15000):
-                    page.get_by_text("下書き保存", exact=True).first.click()
-            except Exception:
-                pass  # 保存できたかは、この後に開き直して確かめる
-            # 保存された値を読む。画面は入力中の内容をブラウザの中に控えるので、
-            # 同じ context だと保存できていなくても値が見える。控えの無い context で開く
-            again = new_context(browser, state).new_page()
-            login(again)
-            open_contact(again, target)
-            result["values"] = read_back(again)
-            bad = mismatches(draft, result["values"])
-            if bad:
+                result, code = work(a, page, target, draft, target_label)
+            except (Exception, SystemExit):
+                # 毎回起動の形でやり直す。確認も読み直すので、やり直しても安全
+                import codmon_browser
+
+                codmon_browser.stop()
+            finally:
                 browser.close()
-                print(json.dumps({"stopped": "保存した後に開き直すと値が残っていなかった", "fields": bad, **result}, ensure_ascii=False, indent=2))
-                sys.exit(3)
-            result["saved"] = True
-        result["empty"] = empty_fields(result["values"])
-        browser.close()
+                lock.close()
+        if result is None:
+            browser = pw.chromium.launch(**launch_options(not a.headed))
+            context = browser.new_context(**CONTEXT_OPTIONS, storage_state=load_login_state())
+            skip_extras(context)
+            page = context.new_page()
+            login(page)
+            save_login_state(login_only(context.storage_state()))
+            result, code = work(a, page, target, draft, target_label)
+            browser.close()
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    if code:
+        sys.exit(code)
 
 
 if __name__ == "__main__":

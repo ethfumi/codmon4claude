@@ -69,6 +69,17 @@ class CodmonFillTest(unittest.TestCase):
             "origins": [{"origin": "https://parents.codmon.com", "localStorage": [{"name": "codmon_parent_id", "value": "1"}]}],
         })
 
+    def test_browser_port_is_stable_per_account(self):
+        import os
+        from unittest import mock
+
+        import codmon_browser as cb
+
+        with mock.patch.dict(os.environ, {"CODMON_EMAIL": "a@example.com"}):
+            first = cb.port()
+            self.assertEqual(first, cb.port())
+        self.assertTrue(9300 <= first < 9800)
+
 
 if __name__ == "__main__":
     unittest.main()
