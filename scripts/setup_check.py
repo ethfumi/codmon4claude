@@ -108,9 +108,10 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
         lines.append("")
         lines.append(
             "ネットワークの許可も環境変数も無い。どの環境で始めたかは点検では分からない。環境の名前は保護者が自由に付けられる。"
-            "まず、連絡帳専用の環境をもう作ってあるかを聞く。まだなら docs/setup.md の 2 から案内する。"
-            "作ってあって、この会話がその環境なら docs/setup.md の 2 のネットワークの許可から案内する。"
-            "別の環境（Default など）で始めていたら、連絡帳専用の環境で新しいセッションを始め直すよう案内する。"
+            "連絡帳用の環境が一覧にあるかを確かめる（list_environments があれば使う）。"
+            "無ければ、create_environment があれば許可ホスト feed.piyolog.com、parents.codmon.com、ps-api.codmon.com で提案する。秘密の値は入れない。"
+            "道具が無ければ docs/setup.md の 2 のカードが出ない時を案内する。"
+            "あれば、その環境で新しいセッションを始めるよう案内する。"
         )
     elif not network_blocked and missing_env:
         lines.append("")
@@ -118,6 +119,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
             "ネットワークは通るが環境変数が足りない。環境変数は保存してもすぐには入らない。"
             "入れたばかりなら、10 分ほど何も送らずに置いてから何か送ってもらうか、連絡帳専用の環境で新しいセッションを始めてもらう。"
             "まだ入れていなければ docs/setup.md の 2 の環境変数を案内する。"
+            "案内の最初に、ぴよログを使っているかを 1 回だけ聞く。使っていれば URL の手順も出す。使っていなければ要らないと伝える。"
         )
 
     ready = not network_blocked and not missing_env and piyolog["state"] in ("ok", "not_used") and codmon["state"] == "ok"
