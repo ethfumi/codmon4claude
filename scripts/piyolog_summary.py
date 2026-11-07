@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
@@ -36,8 +37,13 @@ def load_feed(url: str | None, path: str | None) -> dict:
             return json.load(f)
     if not url:
         raise SystemExit("PIYOLOG_FEED_URL が設定されていません")
-    req = urllib.request.Request(url, headers={"User-Agent": "codmon4claude"})
-    with urllib.request.urlopen(req, timeout=20) as res:
+    # URL の形が崩れていると、標準の例外は URL をそのまま文面に入れる
+    try:
+        req = urllib.request.Request(url.strip(), headers={"User-Agent": "codmon4claude"})
+        res = urllib.request.urlopen(req, timeout=20)
+    except (ValueError, http.client.InvalidURL):
+        raise SystemExit("PIYOLOG_FEED_URL の形が正しくありません") from None
+    with res:
         return json.load(res)
 
 
