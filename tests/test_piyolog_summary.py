@@ -9,6 +9,16 @@ import piyolog_summary as ps  # noqa: E402
 FIXTURE = Path(__file__).parent / "fixtures" / "feed_sample.json"
 
 
+class LoadFeedTest(unittest.TestCase):
+    def test_malformed_url_is_not_shown_in_error(self):
+        for url in ("FAKE_TOKEN", "http://127.0.0.1:9/FAKE TOKEN"):
+            with self.assertRaises(SystemExit) as cm:
+                ps.load_feed(url, None)
+            self.assertNotIn("FAKE", str(cm.exception))
+            self.assertIsNone(cm.exception.__cause__)
+            self.assertTrue(cm.exception.__suppress_context__)
+
+
 class SummarizeTest(unittest.TestCase):
     def setUp(self):
         self.s = ps.summarize(json.loads(FIXTURE.read_text(encoding="utf-8")))
