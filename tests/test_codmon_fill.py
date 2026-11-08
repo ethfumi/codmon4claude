@@ -71,6 +71,10 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(cf.usual_items(mornings), ["ヨーグルト", "バナナ", "牛乳"])
         self.assertEqual(cf.meal_items("ごはん、カレー（半分）・ぶどう"), ["ごはん", "カレー", "ぶどう"])
 
+    def test_usual_items_empty_when_menu_changes_daily(self):
+        nights = ["カレー、サラダ、牛乳、みかん", "ハンバーグ、スープ、牛乳、みかん", "魚、煮物、ごはん、牛乳", "うどん、天ぷら、漬物、みかん"]
+        self.assertEqual(cf.usual_items(nights), [])
+
     def test_usual_values_needs_repeated_comment(self):
         days = [day("月", comment="鼻水が少し"), day("火", comment="元気です")]
         self.assertNotIn("comment", cf.usual_values(days))

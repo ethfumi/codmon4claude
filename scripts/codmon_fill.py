@@ -125,10 +125,16 @@ def meal_items(value: str) -> list[str]:
 
 
 def usual_items(values: list[str]) -> list[str]:
-    """食事の欄が入っている日の半分より多く出てくる品目を、多い順に並べる。"""
-    days = [set(meal_items(v)) for v in values if v.strip()]
+    """食事の欄が入っている日の半分より多く出てくる品目を、多い順に並べる。
+
+    献立の半分以上をその品目が占めていない時（毎日違う献立の家庭）は、推測できないので空にする。
+    """
+    days = [items for items in (set(meal_items(v)) for v in values) if items]
     count = Counter(w for items in days for w in items)
-    return [w for w, n in count.most_common() if n * 2 > len(days)]
+    usual = [w for w, n in count.most_common() if n * 2 > len(days)]
+    if not usual or sum(len(items.intersection(usual)) / len(items) for items in days) * 2 < len(days):
+        return []
+    return usual
 
 
 def usual_values(days: list[dict]) -> dict:
