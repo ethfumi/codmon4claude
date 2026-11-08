@@ -2,6 +2,7 @@
 
     python3 scripts/codmon_browser.py start   # 裏で起動して、すぐ戻る
     python3 scripts/codmon_browser.py stop
+    python3 scripts/codmon_browser.py prefetch   # 前の 14 日の食事を裏で読み、tmp/meal_history.json に置く
 
 使われないまま 15 分たつか、起動から 1 時間たつか、日付が変わると自分で閉じる。
 プロフィールは一時フォルダで、閉じると消える。動かなければ codmon_fill.py は毎回起動する形に戻る。
@@ -78,8 +79,25 @@ def start() -> None:
         return
     _touch_used()
     _ready_file().unlink(missing_ok=True)
-    kw = {"creationflags": 0x00000008 | 0x08000000} if os.name == "nt" else {"start_new_session": True}
-    subprocess.Popen([sys.executable, __file__, "serve"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+    subprocess.Popen([sys.executable, __file__, "serve"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **_detached())
+
+
+HISTORY_FILE = STATE_DIR / "meal_history.json"
+HISTORY_DAYS = 14
+
+
+def _detached() -> dict:
+    return {"creationflags": 0x00000008 | 0x08000000} if os.name == "nt" else {"start_new_session": True}
+
+
+def prefetch() -> None:
+    """前の日々の食事の欄を裏で読む。すぐ戻る。読み終わるまでファイルは無い。"""
+    HISTORY_FILE.unlink(missing_ok=True)
+    if not os.environ.get("CODMON_EMAIL") or not os.environ.get("CODMON_PASSWORD"):
+        return
+    fill = Path(__file__).resolve().parent / "codmon_fill.py"
+    args = [sys.executable, str(fill), "--history", str(HISTORY_DAYS), "--out", str(HISTORY_FILE)]
+    subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **_detached())
 
 
 def ensure() -> str | None:
@@ -134,4 +152,4 @@ def serve() -> None:
 
 if __name__ == "__main__":
     local_env.load()
-    {"start": start, "stop": stop, "serve": serve}[sys.argv[1]]()
+    {"start": start, "stop": stop, "serve": serve, "prefetch": prefetch}[sys.argv[1]]()

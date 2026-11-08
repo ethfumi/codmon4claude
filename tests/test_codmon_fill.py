@@ -1,10 +1,30 @@
+import json
 import sys
+import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import codmon_fill as cf  # noqa: E402
+
+
+class HistoryTest(unittest.TestCase):
+    def test_history_dates(self):
+        got = [f"{d:%Y-%m-%d}" for d in cf.history_dates(datetime(2026, 3, 2), 3)]
+        self.assertEqual(got, ["2026-03-01", "2026-02-28", "2026-02-27"])
+
+    def test_history_entry(self):
+        d = datetime(2026, 11, 7)
+        self.assertEqual(cf.history_entry(d, "カレー ", ""), {"date": "2026-11-07", "食事 夜": "カレー", "食事 朝": ""})
+        self.assertIsNone(cf.history_entry(d, " ", ""))
+
+    def test_write_atomic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "meal_history.json"
+            cf.write_atomic(path, {"meals": [{"食事 夜": "鍋"}]})
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"meals": [{"食事 夜": "鍋"}]})
+            self.assertEqual([p.name for p in Path(tmp).iterdir()], ["meal_history.json"])
 
 
 class CodmonFillTest(unittest.TestCase):

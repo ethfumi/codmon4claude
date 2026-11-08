@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c 'import playwright' 2>/dev/null || python3 -m pip install -q playwright >/dev/null 2>&1 || true; [ \"$CLAUDE_CODE_REMOTE\" = true ] && python3 \"$CLAUDE_PROJECT_DIR/scripts/codmon_browser.py\" start || true",
+            "command": "python3 -c 'import playwright' 2>/dev/null || python3 -m pip install -q playwright >/dev/null 2>&1 || true; [ \"$CLAUDE_CODE_REMOTE\" = true ] && python3 \"$CLAUDE_PROJECT_DIR/scripts/codmon_browser.py\" start && python3 \"$CLAUDE_PROJECT_DIR/scripts/codmon_browser.py\" prefetch || true",
             "timeout": 300
           },
           {

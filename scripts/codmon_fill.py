@@ -5,6 +5,7 @@
     python3 scripts/codmon_fill.py draft.json --save    # 埋めて「下書き保存」を押す
     python3 scripts/codmon_fill.py --read               # 今入っている内容を表示するだけ
     python3 scripts/codmon_fill.py draft.json --save --date 2026-11-06   # 日付を指定する
+    python3 scripts/codmon_fill.py --history 14 --out tmp/meal_history.json   # 前の 14 日の食事の欄を読むだけ
 
 draft.json に書いた欄だけを変える。書かない欄は入っている内容のまま残るので、夜と朝に分けて少しずつ入れられる。
 書いた欄に別の内容がすでに入っている時は、何も変えずに止まり、入っている内容を表示する。
@@ -81,6 +82,27 @@ def short_label(d: datetime) -> str:
 def default_target(now: datetime) -> datetime:
     """開く連絡帳の日付。午前は今日、12 時以降は次の朝に出す明日の分。"""
     return now + timedelta(days=1) if now.hour >= 12 else now
+
+
+def history_dates(today: datetime, days: int) -> list[datetime]:
+    """さかのぼって読む日。昨日から古い方へ並べる。"""
+    return [today - timedelta(days=i) for i in range(1, days + 1)]
+
+
+def history_entry(d: datetime, night: str, morning: str) -> dict | None:
+    """1 日分の食事の欄。どちらも空なら None。"""
+    night, morning = night.strip(), morning.strip()
+    if not night and not morning:
+        return None
+    return {"date": f"{d:%Y-%m-%d}", "食事 夜": night, "食事 朝": morning}
+
+
+def write_atomic(path: Path, data: dict) -> None:
+    """読み終わった時だけファイルが現れるように、別の名前で書いてから置き換える。"""
+    path.parent.mkdir(exist_ok=True)
+    part = path.with_name(path.name + ".part")
+    part.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(part, path)
 
 
 def expected_parts(draft: dict) -> dict[str, list[tuple[int, str]]]:
@@ -318,13 +340,17 @@ def open_contact(page, target: datetime) -> None:
     days = (target.date() - today.date()).days
     step = 1 if days > 0 else -1
     for i in range(abs(days)):
-        d = today + timedelta(days=step * (i + 1))
-        # 移った直後は前の日の内容が欄に残っているので、その日の内容が届くまで待つ
-        with comments_response(page, d):
-            # 保存の直後は通知がボタンに重なり、普通の click だと 3.5 秒ほど待たされる
-            page.get_by_text(short_label(d), exact=True).first.dispatch_event("click")
-        page.get_by_text(date_label(d), exact=True).first.wait_for(timeout=15000)
+        step_to(page, today + timedelta(days=step * (i + 1)))
     settle(page, meal)
+
+
+def step_to(page, d: datetime) -> None:
+    """画面の上のボタンで、隣の日 d に移る。"""
+    # 移った直後は前の日の内容が欄に残っているので、その日の内容が届くまで待つ
+    with comments_response(page, d):
+        # 保存の直後は通知がボタンに重なり、普通の click だと 3.5 秒ほど待たされる
+        page.get_by_text(short_label(d), exact=True).first.dispatch_event("click")
+    page.get_by_text(date_label(d), exact=True).first.wait_for(timeout=15000)
 
 
 def any_selected(page) -> bool:
@@ -423,7 +449,24 @@ def read_back(page) -> dict:
     }
 
 
+def read_history(page, days: int) -> dict:
+    """画面の上のボタンで 1 日ずつさかのぼり、画面に出た食事の欄を読む。何も変えない。"""
+    today = datetime.now(JST)
+    open_fresh(page, today)
+    meal = page.locator("textarea[placeholder='食事内容']")
+    meals = []
+    for d in history_dates(today, days):
+        step_to(page, d)
+        settle(page, meal.first)
+        entry = history_entry(d, meal.nth(0).input_value(), meal.nth(1).input_value())
+        if entry:
+            meals.append(entry)
+    return {"from": f"{today - timedelta(days=days):%Y-%m-%d}", "to": f"{today - timedelta(days=1):%Y-%m-%d}", "meals": meals}
+
+
 def work(a, page, target: datetime, draft: dict, target_label: str) -> tuple[dict, int]:
+    if a.history:
+        return read_history(page, a.history), 0
     open_fresh(page, target)
     existing = read_back(page)
     if a.read:
@@ -471,10 +514,14 @@ def main() -> None:
     p.add_argument("--date", help="開く連絡帳の日付（YYYY-MM-DD）。省略時は午前は今日、12 時以降は明日")
     p.add_argument("--overwrite", action="store_true", help="すでに入っている内容を上書きする")
     p.add_argument("--save", action="store_true", help="「下書き保存」を押す（送信はしない）")
+    p.add_argument("--history", type=int, metavar="日数", help="前の日数分の食事の欄を読むだけ")
+    p.add_argument("--out", help="--history の結果を書くファイル（読み終わった時だけ現れる）")
     p.add_argument("--headed", action="store_true")
     a = p.parse_args()
-    if not a.read and not a.draft:
-        p.error("draft.json を指定するか --read を付けてください")
+    if a.history is not None and not 1 <= a.history <= 31:
+        p.error("--history は 1 から 31 まで")
+    if not a.read and not a.draft and not a.history:
+        p.error("draft.json を指定するか --read か --history を付けてください")
     draft = json.loads(Path(a.draft).read_text(encoding="utf-8")) if a.draft else {}
     now = datetime.now(JST)
     target = datetime.strptime(a.date, "%Y-%m-%d").replace(tzinfo=JST) if a.date else default_target(now)
@@ -509,7 +556,10 @@ def main() -> None:
             save_login_state(login_only(context.storage_state()))
             result, code = work(a, page, target, draft, target_label)
             browser.close()
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if a.history and a.out:
+        write_atomic(Path(a.out), result)
+    else:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     if code:
         sys.exit(code)
 
