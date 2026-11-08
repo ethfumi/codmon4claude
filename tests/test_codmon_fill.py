@@ -19,6 +19,11 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(cf.history_entry(d, "カレー ", ""), {"date": "2026-11-07", "食事 夜": "カレー", "食事 朝": ""})
         self.assertIsNone(cf.history_entry(d, " ", ""))
 
+    def test_history_is_fresh(self):
+        self.assertTrue(cf.history_is_fresh({"read_on": "2026-11-08"}, datetime(2026, 11, 8, 7)))
+        self.assertFalse(cf.history_is_fresh({"read_on": "2026-11-07"}, datetime(2026, 11, 8, 7)))
+        self.assertFalse(cf.history_is_fresh({}, datetime(2026, 11, 8, 7)))
+
     def test_write_atomic(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "meal_history.json"

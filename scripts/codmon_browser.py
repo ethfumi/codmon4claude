@@ -2,7 +2,7 @@
 
     python3 scripts/codmon_browser.py start   # 裏で起動して、すぐ戻る
     python3 scripts/codmon_browser.py stop
-    python3 scripts/codmon_browser.py prefetch   # 前の 14 日の食事を裏で読み、tmp/meal_history.json に置く
+    python3 scripts/codmon_browser.py prefetch   # 前の 30 日の食事を裏で読み、tmp/meal_history.json に置く
 
 使われないまま 15 分たつか、起動から 1 時間たつか、日付が変わると自分で閉じる。
 プロフィールは一時フォルダで、閉じると消える。動かなければ codmon_fill.py は毎回起動する形に戻る。
@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import signal
 import socket
@@ -83,7 +84,7 @@ def start() -> None:
 
 
 HISTORY_FILE = STATE_DIR / "meal_history.json"
-HISTORY_DAYS = 14
+HISTORY_DAYS = 30
 
 
 def _detached() -> dict:
@@ -91,7 +92,17 @@ def _detached() -> dict:
 
 
 def prefetch() -> None:
-    """前の日々の食事の欄を裏で読む。すぐ戻る。読み終わるまでファイルは無い。"""
+    """前の日々の食事の欄を裏で読む。すぐ戻る。読み終わるまでファイルは無い。
+
+    作業場所が立ち上がり直すたびにフックが動くので、今日読んだファイルがあれば読み直さない。
+    """
+    import codmon_fill as cf
+
+    try:
+        if cf.history_is_fresh(json.loads(HISTORY_FILE.read_text(encoding="utf-8")), datetime.now(JST)):
+            return
+    except (OSError, ValueError):
+        pass
     HISTORY_FILE.unlink(missing_ok=True)
     if not os.environ.get("CODMON_EMAIL") or not os.environ.get("CODMON_PASSWORD"):
         return

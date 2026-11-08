@@ -5,7 +5,7 @@
     python3 scripts/codmon_fill.py draft.json --save    # 埋めて「下書き保存」を押す
     python3 scripts/codmon_fill.py --read               # 今入っている内容を表示するだけ
     python3 scripts/codmon_fill.py draft.json --save --date 2026-11-06   # 日付を指定する
-    python3 scripts/codmon_fill.py --history 14 --out tmp/meal_history.json   # 前の 14 日の食事の欄を読むだけ
+    python3 scripts/codmon_fill.py --history 30 --out tmp/meal_history.json   # 前の 30 日の食事の欄を読むだけ
 
 draft.json に書いた欄だけを変える。書かない欄は入っている内容のまま残るので、夜と朝に分けて少しずつ入れられる。
 書いた欄に別の内容がすでに入っている時は、何も変えずに止まり、入っている内容を表示する。
@@ -95,6 +95,11 @@ def history_entry(d: datetime, night: str, morning: str) -> dict | None:
     if not night and not morning:
         return None
     return {"date": f"{d:%Y-%m-%d}", "食事 夜": night, "食事 朝": morning}
+
+
+def history_is_fresh(data: dict, today: datetime) -> bool:
+    """今日読んだ物なら、読み直さずに使える。"""
+    return data.get("read_on") == f"{today:%Y-%m-%d}"
 
 
 def write_atomic(path: Path, data: dict) -> None:
@@ -461,7 +466,7 @@ def read_history(page, days: int) -> dict:
         entry = history_entry(d, meal.nth(0).input_value(), meal.nth(1).input_value())
         if entry:
             meals.append(entry)
-    return {"from": f"{today - timedelta(days=days):%Y-%m-%d}", "to": f"{today - timedelta(days=1):%Y-%m-%d}", "meals": meals}
+    return {"read_on": f"{today:%Y-%m-%d}", "from": f"{today - timedelta(days=days):%Y-%m-%d}", "to": f"{today - timedelta(days=1):%Y-%m-%d}", "meals": meals}
 
 
 def work(a, page, target: datetime, draft: dict, target_label: str) -> tuple[dict, int]:
