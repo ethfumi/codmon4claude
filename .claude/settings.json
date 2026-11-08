@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git pull --ff-only origin main *)",
       "Bash(python3 scripts/setup_check.py *)",
       "Bash(python3 scripts/piyolog_summary.py *)",
       "Bash(python3 scripts/codmon_fill.py *)",
