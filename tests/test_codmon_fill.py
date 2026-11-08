@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime
 from pathlib import Path
 
@@ -86,6 +87,27 @@ class HistoryTest(unittest.TestCase):
             cf.write_atomic(path, {"meals": [{"食事 夜": "鍋"}]})
             self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"meals": [{"食事 夜": "鍋"}]})
             self.assertEqual([p.name for p in Path(tmp).iterdir()], ["notebook_history.json"])
+
+
+class PrefetchTest(unittest.TestCase):
+    def run_prefetch(self, tmp):
+        import codmon_browser as cb
+
+        env = {"CODMON_EMAIL": "a", "CODMON_PASSWORD": "b"}
+        with mock.patch.multiple(cb, STATE_DIR=tmp, HISTORY_FILE=tmp / "h.json", HISTORY_STARTED=tmp / "h.started"), mock.patch.dict("os.environ", env), mock.patch("subprocess.Popen") as popen:
+            cb.prefetch()
+            cb.prefetch()
+        return popen.call_count
+
+    def test_starts_once_while_reading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self.run_prefetch(Path(tmp)), 1)
+
+    def test_skips_when_read_today(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            today = datetime.now(cf.JST)
+            (Path(tmp) / "h.json").write_text(json.dumps({"read_on": f"{today:%Y-%m-%d}"}), encoding="utf-8")
+            self.assertEqual(self.run_prefetch(Path(tmp)), 0)
 
 
 class CodmonFillTest(unittest.TestCase):

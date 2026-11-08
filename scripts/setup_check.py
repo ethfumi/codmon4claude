@@ -77,7 +77,19 @@ def check_codmon() -> dict:
     return {"state": state, "status": status}
 
 
-def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
+def history_state() -> str:
+    """前の 30 日の連絡帳を読んだかどうか。中身は出さない。"""
+    import codmon_browser
+
+    try:
+        days = json.loads(codmon_browser.HISTORY_FILE.read_text(encoding="utf-8"))["days"]
+        return f"読み終わった（中身のある日 {len(days)} 日）"
+    except (OSError, ValueError, KeyError):
+        pass
+    return "裏で読んでいる" if codmon_browser.HISTORY_STARTED.exists() else "まだ読んでいない"
+
+
+def build_report(missing_env: list[str], piyolog: dict, codmon: dict, history: str | None = None) -> str:
     lines = ["# codmon4claude の準備の点検結果", ""]
 
     network_blocked = piyolog.get("state") == "blocked" or codmon.get("state") == "blocked"
@@ -103,6 +115,8 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict) -> str:
         "blocked": "ネットワーク設定で止められている",
     }.get(codmon["state"], f"つながらない（{codmon['state']} {codmon.get('status') or ''}）")
     lines.append(f"- コドモン: {codmon_text}")
+    if history:
+        lines.append(f"- 前の 30 日の連絡帳（料理名の候補・書き方の手本・いつもの値に使う。tmp/notebook_history.json）: {history}")
 
     if network_blocked and len(missing_env) == len(REQUIRED_ENV):
         lines.append("")
@@ -141,7 +155,13 @@ def main() -> None:
     missing_env = check_env()
     piyolog = check_piyolog()
     codmon = check_codmon()
-    report = build_report(missing_env, piyolog, codmon)
+    remote = os.environ.get("CLAUDE_CODE_REMOTE") == "true"
+    # 環境変数は会話の途中で入ることがあるので、そろったと分かった時点で前の連絡帳を読み始める
+    if "--human" in sys.argv and remote and not missing_env and codmon["state"] == "ok":
+        import codmon_browser
+
+        codmon_browser.prefetch()
+    report = build_report(missing_env, piyolog, codmon, history_state() if remote else None)
     if "--human" in sys.argv:
         print(report)
         return
