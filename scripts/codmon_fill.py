@@ -157,10 +157,10 @@ def usual_values(days: list[dict]) -> dict:
     comment = most_common([d.get("コメント", "") for d in days], at_least=2)
     if comment:
         out["comment"] = comment
-    for key, label in (("meal_night_items", "食事 夜"), ("meal_morning_items", "食事 朝")):
-        items = usual_items([d.get(label, "") for d in days])
-        if items:
-            out[key] = items
+    # 晩ごはんは毎日違うので、朝ごはんだけ出す
+    items = usual_items([d.get("食事 朝", "") for d in days])
+    if items:
+        out["meal_morning_items"] = items
     return out
 
 
