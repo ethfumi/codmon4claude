@@ -5,7 +5,7 @@
     python3 scripts/codmon_fill.py draft.json --save    # 埋めて「下書き保存」を押す
     python3 scripts/codmon_fill.py --read               # 今入っている内容を表示するだけ
     python3 scripts/codmon_fill.py draft.json --save --date 2026-11-06   # 日付を指定する
-    python3 scripts/codmon_fill.py --history 30 --out tmp/meal_history.json   # 前の 30 日の食事の欄を読むだけ
+    python3 scripts/codmon_fill.py --history 30 --out tmp/notebook_history.json   # 前の 30 日の連絡帳を読むだけ
 
 draft.json に書いた欄だけを変える。書かない欄は入っている内容のまま残るので、夜と朝に分けて少しずつ入れられる。
 書いた欄に別の内容がすでに入っている時は、何も変えずに止まり、入っている内容を表示する。
@@ -39,7 +39,9 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
+from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -89,12 +91,77 @@ def history_dates(today: datetime, days: int) -> list[datetime]:
     return [today - timedelta(days=i) for i in range(1, days + 1)]
 
 
-def history_entry(d: datetime, night: str, morning: str) -> dict | None:
-    """1 日分の食事の欄。どちらも空なら None。"""
-    night, morning = night.strip(), morning.strip()
-    if not night and not morning:
+def split_parts(label: str, value: str) -> list[str]:
+    """選ぶ欄の値を部分に分ける。未選択の部分は空にする。"""
+    parts = [x.strip(" )") for x in value.split(SELECT_SPLIT[label])]
+    return ["" if p in PLACEHOLDERS else p for p in parts]
+
+
+def history_entry(d: datetime, values: dict) -> dict | None:
+    """1 日分の連絡帳の欄（read_back の形）。全部の欄が空なら None。"""
+    filled = any(any(split_parts(k, v)) if k in SELECT_SPLIT else v.strip() for k, v in values.items())
+    if not filled:
         return None
-    return {"date": f"{d:%Y-%m-%d}", "食事 夜": night, "食事 朝": morning}
+    return {**{k: v.strip() for k, v in values.items()}, "date": f"{d:%Y-%m-%d}", "weekday": WEEKDAYS[d.weekday()]}
+
+
+def most_common(values: list, at_least: int = 1):
+    """いちばん多い値。同じ数なら先に出た物（新しい日）。
+
+    at_least 回に届かない時と、入っている日が半分に届かない時（いつもは空の欄）は None。
+    """
+    total = len(values)
+    values = [v for v in values if v]
+    if not values or len(values) * 2 < total:
+        return None
+    value, n = Counter(values).most_common(1)[0]
+    return value if n >= at_least else None
+
+
+def meal_items(value: str) -> list[str]:
+    """食事の欄を品目に分ける。括弧の中（食べた量）は外す。"""
+    value = re.sub(r"（[^）]*）|\([^)]*\)", "", value)
+    return [w.strip() for w in re.split(r"[、,・\n]", value) if w.strip()]
+
+
+def usual_items(values: list[str]) -> list[str]:
+    """食事の欄が入っている日の半分より多く出てくる品目を、多い順に並べる。"""
+    days = [set(meal_items(v)) for v in values if v.strip()]
+    count = Counter(w for items in days for w in items)
+    return [w for w, n in count.most_common() if n * 2 > len(days)]
+
+
+def usual_values(days: list[dict]) -> dict:
+    """前の日々の連絡帳から、いつもの値を draft.json と同じ形で出す。days は新しい日から並ぶ。
+
+    お迎えは同じ曜日ごと、コメントは 2 回以上同じ書き方をした時だけ。
+    入っている日が半分に届かない欄は、いつもは空なので出さない。
+    """
+    out: dict = {}
+    for key, label in (("poop_night", "排便 夜"), ("poop_morning", "排便 朝")):
+        pairs = [tuple(split_parts(label, d.get(label, ""))[:2]) for d in days]
+        pick = most_common([p if len(p) == 2 and all(p) else None for p in pairs])
+        if pick:
+            out[key] = {"state": pick[0], "count": int(pick[1].rstrip("回"))}
+    sleep = [split_parts("睡眠", d.get("睡眠", "")) + ["", ""] for d in days]
+    bed, wake = most_common([s[0] for s in sleep]), most_common([s[1] for s in sleep])
+    if bed or wake:
+        out["sleep"] = {k: v for k, v in (("bed", bed), ("wake", wake)) if v}
+    temp = [split_parts("体温", d.get("体温", "")) + ["", ""] for d in days]
+    celsius, at = most_common([t[0] for t in temp]), most_common([t[1] for t in temp])
+    if celsius or at:
+        out["temperature"] = {k: v for k, v in (("celsius", float(celsius.rstrip("℃")) if celsius else None), ("time", at)) if v}
+    pickup = {w: p for w in WEEKDAYS if (p := most_common([d.get("お迎え", "") for d in days if d.get("weekday") == w]))}
+    if pickup:
+        out["pickup_by_weekday"] = pickup
+    comment = most_common([d.get("コメント", "") for d in days], at_least=2)
+    if comment:
+        out["comment"] = comment
+    for key, label in (("meal_night_items", "食事 夜"), ("meal_morning_items", "食事 朝")):
+        items = usual_items([d.get(label, "") for d in days])
+        if items:
+            out[key] = items
+    return out
 
 
 def history_is_fresh(data: dict, today: datetime) -> bool:
@@ -455,18 +522,24 @@ def read_back(page) -> dict:
 
 
 def read_history(page, days: int) -> dict:
-    """画面の上のボタンで 1 日ずつさかのぼり、画面に出た食事の欄を読む。何も変えない。"""
+    """画面の上のボタンで 1 日ずつさかのぼり、画面に出た欄を読む。何も変えない。"""
     today = datetime.now(JST)
     open_fresh(page, today)
     meal = page.locator("textarea[placeholder='食事内容']")
-    meals = []
+    entries = []
     for d in history_dates(today, days):
         step_to(page, d)
         settle(page, meal.first)
-        entry = history_entry(d, meal.nth(0).input_value(), meal.nth(1).input_value())
+        entry = history_entry(d, read_back(page))
         if entry:
-            meals.append(entry)
-    return {"read_on": f"{today:%Y-%m-%d}", "from": f"{today - timedelta(days=days):%Y-%m-%d}", "to": f"{today - timedelta(days=1):%Y-%m-%d}", "meals": meals}
+            entries.append(entry)
+    return {
+        "read_on": f"{today:%Y-%m-%d}",
+        "from": f"{today - timedelta(days=days):%Y-%m-%d}",
+        "to": f"{today - timedelta(days=1):%Y-%m-%d}",
+        "days": entries,
+        "usual": usual_values(entries),
+    }
 
 
 def work(a, page, target: datetime, draft: dict, target_label: str) -> tuple[dict, int]:

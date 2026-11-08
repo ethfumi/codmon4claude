@@ -9,6 +9,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import codmon_fill as cf  # noqa: E402
 
 
+def day(weekday="月", poop="状態 / 回数", sleep="入眠 〜 起床", temp="体温 (測定時間)", pickup="", comment="", night_meal=""):
+    """read_back と同じ形の 1 日分（架空の記録）。"""
+    return {
+        "weekday": weekday,
+        "排便 夜": poop,
+        "排便 朝": "状態 / 回数",
+        "食事 夜": night_meal,
+        "食事 朝": "",
+        "睡眠": sleep,
+        "体温": temp,
+        "お迎え": pickup,
+        "コメント": comment,
+    }
+
+
+def screen(**kw):
+    """画面から読んだ 1 日分（曜日は付かない）。"""
+    return {k: v for k, v in day(**kw).items() if k != "weekday"}
+
+
 class HistoryTest(unittest.TestCase):
     def test_history_dates(self):
         got = [f"{d:%Y-%m-%d}" for d in cf.history_dates(datetime(2026, 3, 2), 3)]
@@ -16,8 +36,44 @@ class HistoryTest(unittest.TestCase):
 
     def test_history_entry(self):
         d = datetime(2026, 11, 7)
-        self.assertEqual(cf.history_entry(d, "カレー ", ""), {"date": "2026-11-07", "食事 夜": "カレー", "食事 朝": ""})
-        self.assertIsNone(cf.history_entry(d, " ", ""))
+        got = cf.history_entry(d, screen(night_meal="カレー "))
+        self.assertEqual((got["date"], got["weekday"], got["食事 夜"]), ("2026-11-07", "土", "カレー"))
+        self.assertIsNone(cf.history_entry(d, screen()))
+
+    def test_usual_values(self):
+        days = [
+            day("月", poop="普通 / 1回", sleep="20:45 〜 6:00", temp="36.6℃ (6:15)", pickup="18時\nパパ"),
+            day("日", poop="軟便 / 1回", sleep="21:00 〜 6:00", temp="36.8℃ (7:00)", comment="よろしくお願いします"),
+            day("金", poop="普通 / 1回", sleep="20:45 〜 6:15", temp="36.6℃ (6:15)", pickup="17時\nママ", comment="よろしくお願いします"),
+            day("月", poop="状態 / 回数", sleep="入眠 〜 起床", temp="体温 (測定時間)", pickup="17時\nママ"),
+            day("月", poop="普通 / 2回", pickup="18時\nパパ", comment="よろしくお願いします"),
+        ]
+        self.assertEqual(
+            cf.usual_values(days),
+            {
+                "poop_night": {"state": "普通", "count": 1},
+                "sleep": {"bed": "20:45", "wake": "6:00"},
+                "temperature": {"celsius": 36.6, "time": "6:15"},
+                "pickup_by_weekday": {"月": "18時\nパパ", "金": "17時\nママ"},
+                "comment": "よろしくお願いします",
+            },
+        )
+
+    def test_usual_values_skips_mostly_empty(self):
+        days = [day("月", poop="普通 / 1回", sleep="20:45 〜 6:00"), day("火", sleep="20:45 〜 6:00"), day("水", sleep="21:00 〜 6:00")]
+        got = cf.usual_values(days)
+        self.assertNotIn("poop_night", got)
+        self.assertEqual(got["sleep"], {"bed": "20:45", "wake": "6:00"})
+
+    def test_usual_items(self):
+        mornings = ["クロワッサン、バナナ、ヨーグルト（全て完食）", "ロールパン、バナナ、ヨーグルト、牛乳（バナナは半分、ほかは完食）", "ジャムトースト、ヨーグルト、牛乳（全て完食）", ""]
+        self.assertEqual(cf.usual_items(mornings), ["ヨーグルト", "バナナ", "牛乳"])
+        self.assertEqual(cf.meal_items("ごはん、カレー（半分）・ぶどう"), ["ごはん", "カレー", "ぶどう"])
+
+    def test_usual_values_needs_repeated_comment(self):
+        days = [day("月", comment="鼻水が少し"), day("火", comment="元気です")]
+        self.assertNotIn("comment", cf.usual_values(days))
+        self.assertEqual(cf.usual_values([day("月")]), {})
 
     def test_history_is_fresh(self):
         self.assertTrue(cf.history_is_fresh({"read_on": "2026-11-08"}, datetime(2026, 11, 8, 7)))
@@ -26,10 +82,10 @@ class HistoryTest(unittest.TestCase):
 
     def test_write_atomic(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "meal_history.json"
+            path = Path(tmp) / "notebook_history.json"
             cf.write_atomic(path, {"meals": [{"食事 夜": "鍋"}]})
             self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"meals": [{"食事 夜": "鍋"}]})
-            self.assertEqual([p.name for p in Path(tmp).iterdir()], ["meal_history.json"])
+            self.assertEqual([p.name for p in Path(tmp).iterdir()], ["notebook_history.json"])
 
 
 class CodmonFillTest(unittest.TestCase):
