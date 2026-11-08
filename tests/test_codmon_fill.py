@@ -43,7 +43,7 @@ class HistoryTest(unittest.TestCase):
     def test_usual_values(self):
         days = [
             day("月", poop="普通 / 1回", sleep="20:45 〜 6:00", temp="36.6℃ (6:15)", pickup="18時\nパパ"),
-            day("日", poop="軟便 / 1回", sleep="21:00 〜 6:00", temp="36.8℃ (7:00)"),
+            day("日", poop="軟便 / 1回", sleep="21:00 〜 6:00", temp="36.8℃ (7:00)", comment="よろしくお願いします"),
             day("金", poop="普通 / 1回", sleep="20:45 〜 6:15", temp="36.6℃ (6:15)", pickup="17時\nママ", comment="よろしくお願いします"),
             day("月", poop="状態 / 回数", sleep="入眠 〜 起床", temp="体温 (測定時間)", pickup="17時\nママ"),
             day("月", poop="普通 / 2回", pickup="18時\nパパ", comment="よろしくお願いします"),
@@ -58,6 +58,12 @@ class HistoryTest(unittest.TestCase):
                 "comment": "よろしくお願いします",
             },
         )
+
+    def test_usual_values_skips_mostly_empty(self):
+        days = [day("月", poop="普通 / 1回", sleep="20:45 〜 6:00"), day("火", sleep="20:45 〜 6:00"), day("水", sleep="21:00 〜 6:00")]
+        got = cf.usual_values(days)
+        self.assertNotIn("poop_night", got)
+        self.assertEqual(got["sleep"], {"bed": "20:45", "wake": "6:00"})
 
     def test_usual_values_needs_repeated_comment(self):
         days = [day("月", comment="鼻水が少し"), day("火", comment="元気です")]

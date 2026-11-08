@@ -105,9 +105,13 @@ def history_entry(d: datetime, values: dict) -> dict | None:
 
 
 def most_common(values: list, at_least: int = 1):
-    """いちばん多い値。同じ数なら先に出た物（新しい日）。at_least 回に届かなければ None。"""
+    """いちばん多い値。同じ数なら先に出た物（新しい日）。
+
+    at_least 回に届かない時と、入っている日が半分に届かない時（いつもは空の欄）は None。
+    """
+    total = len(values)
     values = [v for v in values if v]
-    if not values:
+    if not values or len(values) * 2 < total:
         return None
     value, n = Counter(values).most_common(1)[0]
     return value if n >= at_least else None
@@ -117,11 +121,12 @@ def usual_values(days: list[dict]) -> dict:
     """前の日々の連絡帳から、いつもの値を draft.json と同じ形で出す。days は新しい日から並ぶ。
 
     お迎えは同じ曜日ごと、コメントは 2 回以上同じ書き方をした時だけ。
+    入っている日が半分に届かない欄は、いつもは空なので出さない。
     """
     out: dict = {}
     for key, label in (("poop_night", "排便 夜"), ("poop_morning", "排便 朝")):
         pairs = [tuple(split_parts(label, d.get(label, ""))[:2]) for d in days]
-        pick = most_common([p for p in pairs if len(p) == 2 and all(p)])
+        pick = most_common([p if len(p) == 2 and all(p) else None for p in pairs])
         if pick:
             out[key] = {"state": pick[0], "count": int(pick[1].rstrip("回"))}
     sleep = [split_parts("睡眠", d.get("睡眠", "")) + ["", ""] for d in days]
