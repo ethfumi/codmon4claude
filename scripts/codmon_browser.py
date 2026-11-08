@@ -85,6 +85,8 @@ def start() -> None:
 
 HISTORY_FILE = STATE_DIR / "notebook_history.json"
 HISTORY_DAYS = 30
+HISTORY_STARTED = STATE_DIR / "notebook_history.started"
+HISTORY_STARTED_SECONDS = 180
 
 
 def _detached() -> dict:
@@ -103,9 +105,14 @@ def prefetch() -> None:
             return
     except (OSError, ValueError):
         pass
-    HISTORY_FILE.unlink(missing_ok=True)
     if not os.environ.get("CODMON_EMAIL") or not os.environ.get("CODMON_PASSWORD"):
         return
+    # フック・準備の点検・スキルのどこから呼ばれても、読んでいる間は 1 本だけにする
+    if HISTORY_STARTED.exists() and time.time() - HISTORY_STARTED.stat().st_mtime < HISTORY_STARTED_SECONDS:
+        return
+    HISTORY_FILE.unlink(missing_ok=True)
+    STATE_DIR.mkdir(exist_ok=True)
+    HISTORY_STARTED.touch()
     fill = Path(__file__).resolve().parent / "codmon_fill.py"
     args = [sys.executable, str(fill), "--history", str(HISTORY_DAYS), "--out", str(HISTORY_FILE)]
     subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **_detached())

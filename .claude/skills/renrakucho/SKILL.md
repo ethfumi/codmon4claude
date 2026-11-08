@@ -39,7 +39,7 @@ python3 scripts/piyolog_summary.py
 
 会話の始まりに裏で読まれ、読み終わると `tmp/notebook_history.json` に置かれる。`days` に日ごとの全部の欄、`usual` にいつもの値（draft.json と同じ形。お迎えは曜日ごとの `pickup_by_weekday`、食事はいつも入っている品目の `meal_morning_items`・`meal_night_items`、コメントは同じ書き方が 2 回以上あった時だけ。入っている日が半分に届かない欄は、いつもは空なので出ない）。使い方は 3。
 
-- 無ければ待たずに進める。同じ会話で一度読んだ物は、読み直さない
+- 無ければ `python3 scripts/codmon_browser.py prefetch` を 1 回動かして（すぐ戻る）、待たずに進める。読み終わった後の写真や言葉から使う。同じ会話で一度読んだ物は、読み直さない
 - 読んだ内容はこの会話の中だけで使い、リポジトリのファイルに書かない
 
 ### 写真

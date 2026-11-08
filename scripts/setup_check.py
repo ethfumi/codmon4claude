@@ -144,6 +144,11 @@ def main() -> None:
     report = build_report(missing_env, piyolog, codmon)
     if "--human" in sys.argv:
         print(report)
+        # 環境変数は会話の途中で入ることがあるので、そろったと分かった時点で前の連絡帳を読み始める
+        if os.environ.get("CLAUDE_CODE_REMOTE") == "true" and not missing_env and codmon["state"] == "ok":
+            import codmon_browser
+
+            codmon_browser.prefetch()
         return
     print(json.dumps({
         "hookSpecificOutput": {
