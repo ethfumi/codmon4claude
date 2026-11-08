@@ -39,6 +39,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from collections import Counter
 from contextlib import contextmanager
@@ -117,6 +118,19 @@ def most_common(values: list, at_least: int = 1):
     return value if n >= at_least else None
 
 
+def meal_items(value: str) -> list[str]:
+    """食事の欄を品目に分ける。括弧の中（食べた量）は外す。"""
+    value = re.sub(r"（[^）]*）|\([^)]*\)", "", value)
+    return [w.strip() for w in re.split(r"[、,・\n]", value) if w.strip()]
+
+
+def usual_items(values: list[str]) -> list[str]:
+    """食事の欄が入っている日の半分より多く出てくる品目を、多い順に並べる。"""
+    days = [set(meal_items(v)) for v in values if v.strip()]
+    count = Counter(w for items in days for w in items)
+    return [w for w, n in count.most_common() if n * 2 > len(days)]
+
+
 def usual_values(days: list[dict]) -> dict:
     """前の日々の連絡帳から、いつもの値を draft.json と同じ形で出す。days は新しい日から並ぶ。
 
@@ -143,6 +157,10 @@ def usual_values(days: list[dict]) -> dict:
     comment = most_common([d.get("コメント", "") for d in days], at_least=2)
     if comment:
         out["comment"] = comment
+    for key, label in (("meal_night_items", "食事 夜"), ("meal_morning_items", "食事 朝")):
+        items = usual_items([d.get(label, "") for d in days])
+        if items:
+            out[key] = items
     return out
 
 
