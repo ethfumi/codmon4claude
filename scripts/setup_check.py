@@ -140,7 +140,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict, history: s
     ready = not network_blocked and not missing_env and piyolog["state"] in ("ok", "not_used") and codmon["state"] == "ok"
     lines.append("")
     if ready:
-        lines.append("準備はそろっている。保護者が写真を上げたら、連絡帳の入力を始めてよい。")
+        lines.append("準備はそろっている。保護者が写真を上げたら、連絡帳の入力を始めてよい。使い方を案内する時は「『連絡帳お願い』と送ると、連絡帳を埋めて今の様子を見せます。書きたいことを文章で送ったり、ご飯の写真をアップロードしたりしても入力できます。」と伝える。")
     else:
         lines.append(
             "準備が足りない。docs/setup.md の手順のうち、足りない所だけを、上から 1 つずつ保護者に案内する。"
