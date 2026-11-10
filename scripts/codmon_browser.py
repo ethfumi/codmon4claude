@@ -96,12 +96,12 @@ def _detached() -> dict:
 def prefetch() -> None:
     """前の日々の連絡帳を裏で読む。すぐ戻る。読み終わるまでファイルは無い。
 
-    作業場所が立ち上がり直すたびにフックが動くので、今日読んだファイルがあれば読み直さない。
+    作業場所が立ち上がり直すたびにフックが動くので、この会話で読み終わったファイルがあれば、日付が変わっても読み直さない。
     """
     import codmon_fill as cf
 
     try:
-        if cf.history_is_fresh(json.loads(HISTORY_FILE.read_text(encoding="utf-8")), datetime.now(JST)):
+        if cf.history_is_read(json.loads(HISTORY_FILE.read_text(encoding="utf-8"))):
             return
     except (OSError, ValueError):
         pass
