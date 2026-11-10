@@ -195,5 +195,13 @@ class CodmonFillTest(unittest.TestCase):
         self.assertTrue(9300 <= first < 9800)
 
 
+class NamesTest(unittest.TestCase):
+    def test_split_names(self):
+        self.assertEqual(cf.split_names("山田 たろう > さくら保育園"),
+                         {"children": ["山田 たろう"], "facilities": ["さくら保育園"]})
+        self.assertEqual(cf.split_names("たろう"), {"children": ["たろう"], "facilities": []})
+        self.assertEqual(cf.split_names(""), {"children": [], "facilities": []})
+
+
 if __name__ == "__main__":
     unittest.main()
