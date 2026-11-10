@@ -170,9 +170,9 @@ def usual_values(days: list[dict]) -> dict:
     return out
 
 
-def history_is_fresh(data: dict, today: datetime) -> bool:
-    """今日読んだ物なら、読み直さずに使える。"""
-    return data.get("read_on") == f"{today:%Y-%m-%d}"
+def history_is_read(data: dict) -> bool:
+    """この会話で一度読み終わっていれば、読み直さない。日付が変わっても、読んだ中身は会話に残っている。"""
+    return bool(data.get("read_on"))
 
 
 def write_atomic(path: Path, data: dict) -> None:

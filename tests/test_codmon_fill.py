@@ -80,10 +80,9 @@ class HistoryTest(unittest.TestCase):
         self.assertNotIn("comment", cf.usual_values(days))
         self.assertEqual(cf.usual_values([day("月")]), {})
 
-    def test_history_is_fresh(self):
-        self.assertTrue(cf.history_is_fresh({"read_on": "2026-11-08"}, datetime(2026, 11, 8, 7)))
-        self.assertFalse(cf.history_is_fresh({"read_on": "2026-11-07"}, datetime(2026, 11, 8, 7)))
-        self.assertFalse(cf.history_is_fresh({}, datetime(2026, 11, 8, 7)))
+    def test_history_is_read(self):
+        self.assertTrue(cf.history_is_read({"read_on": "2026-11-07"}))
+        self.assertFalse(cf.history_is_read({}))
 
     def test_write_atomic(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -107,10 +106,10 @@ class PrefetchTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(self.run_prefetch(Path(tmp)), 1)
 
-    def test_skips_when_read_today(self):
+    def test_skips_when_already_read(self):
         with tempfile.TemporaryDirectory() as tmp:
-            today = datetime.now(cf.JST)
-            (Path(tmp) / "h.json").write_text(json.dumps({"read_on": f"{today:%Y-%m-%d}"}), encoding="utf-8")
+            # 前の日に読んだ物でも読み直さない
+            (Path(tmp) / "h.json").write_text(json.dumps({"read_on": "2026-11-01"}), encoding="utf-8")
             self.assertEqual(self.run_prefetch(Path(tmp)), 0)
 
 
