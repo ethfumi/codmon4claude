@@ -34,8 +34,7 @@
 ## 開発
 
 - 連絡帳の会話で不具合に気づいても、自分からリポジトリを変更しない。コミット・push・PR を作らず、相手に短く伝えて、できる範囲で連絡帳を進める。変更するのは、開発を頼まれた時だけ
-- `scripts/block_repo_changes.py` が、開発者（`ethfumi`）以外のアカウントの会話のコミット・push・PR の操作を止める
-- 自分のフォークを直したい人は、環境の設定の環境変数に `CODMON4CLAUDE_DEV=1` を入れると、この止め方を外せる
+- `scripts/block_repo_changes.py` が、環境変数 `CODMON4CLAUDE_DEV=1` の無い会話のコミット・push・PR の操作を止める。開発する人は、クラウド環境の環境変数か手元の `.env` にこの行を入れる
 - 送る変更にコドモンのパスワード・メールアドレス、ぴよログの URL、子どもの名前、園の名前が入っていると、誰の会話でも止める。名前はコドモンの画面を開いた時に `tmp/codmon_names.json` に控える
 - `main` へ直接 push しない。ブランチから PR を作り、merge commit でマージする
 - マージしたら、マージ済みのブランチを消して、本体の checkout の `main` を `git pull --ff-only origin main` で最新にする

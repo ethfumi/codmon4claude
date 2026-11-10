@@ -28,12 +28,6 @@ class BlockRepoChangesTest(unittest.TestCase):
         self.assertFalse(b.is_blocked("mcp__github__get_pull_request", {}))
         self.assertFalse(b.is_blocked("Read", {"file_path": "a"}))
 
-    def test_should_stop(self):
-        self.assertFalse(b.should_stop("ethfumi"))
-        self.assertTrue(b.should_stop("someone-else"))
-        # 分からない時も止める
-        self.assertTrue(b.should_stop(None))
-
 
     def test_secrets_and_leaks(self):
         env = {"CODMON_PASSWORD": "pass-1234", "CODMON_EMAIL": "a@example.com",
