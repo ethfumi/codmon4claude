@@ -78,7 +78,7 @@ def check_codmon() -> dict:
 
 
 def history_state() -> str:
-    """前の 30 日の連絡帳を読んだかどうか。中身は出さない。"""
+    """前の 14 日の連絡帳を読んだかどうか。中身は出さない。"""
     import codmon_browser
 
     try:
@@ -116,7 +116,7 @@ def build_report(missing_env: list[str], piyolog: dict, codmon: dict, history: s
     }.get(codmon["state"], f"つながらない（{codmon['state']} {codmon.get('status') or ''}）")
     lines.append(f"- コドモン: {codmon_text}")
     if history:
-        lines.append(f"- 前の 30 日の連絡帳（料理名の候補・書き方の手本・いつもの値に使う。tmp/notebook_history.json）: {history}")
+        lines.append(f"- 前の 14 日の連絡帳（料理名の候補・書き方の手本・いつもの値に使う。tmp/notebook_history.json）: {history}")
 
     if network_blocked and len(missing_env) == len(REQUIRED_ENV):
         lines.append("")
