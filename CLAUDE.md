@@ -38,5 +38,5 @@
 - 送る変更にコドモンのパスワード・メールアドレス、ぴよログの URL、子どもの名前、園の名前が入っていると、誰の会話でも止める。名前はコドモンの画面を開いた時に `tmp/codmon_names.json` に控える
 - `main` へ直接 push しない。ブランチから PR を作り、merge commit でマージする
 - マージしたら、マージ済みのブランチを消して、本体の checkout の `main` を `git pull --ff-only origin main` で最新にする
-- 開発を頼まれた時は、実装が終わったら、確認を待たずに PR を作ってマージしてよい。テストは `python -m unittest discover -s tests`
+- 開発を頼まれた時は、実装してコミットまで進め、push する前に差分を見せて確認を取る。公開のリポジトリなので、push した物は消せない。テストは `python -m unittest discover -s tests`
 - このリポジトリは公開する。コミットメッセージと PR の本文に、クラウドセッションのリンク（`Claude-Session:` の行、`claude.ai/code/session_...`）を入れない
