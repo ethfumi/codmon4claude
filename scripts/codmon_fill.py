@@ -330,6 +330,32 @@ def open_fresh(page, target: datetime) -> None:
     page.get_by_text("ホーム", exact=True).last.click()
     page.wait_for_url("**/home", timeout=15000)
     open_contact(page, target)
+    remember_names(page)
+
+
+NAMES_FILE = STATE_DIR / "codmon_names.json"
+
+
+def split_names(label: str) -> dict:
+    """連絡先の「子ども > 施設」を、子どもの名前と施設の名前に分ける。"""
+    child, _, facility = (x.strip() for x in label.partition(">"))
+    return {"children": [child] if child else [], "facilities": [facility] if facility else []}
+
+
+def remember_names(page) -> None:
+    """コミットに子どもの名前と園の名前が入らないよう、フックが読む控えを tmp に置く。"""
+    try:
+        labels = page.locator("select").first.evaluate("e => [...e.options].map(o => o.text.trim())")
+    except Exception:
+        return
+    names = {"children": [], "facilities": []}
+    for label in labels:
+        for key, values in split_names(label).items():
+            names[key] += [v for v in values if v not in names[key]]
+    if not names["children"]:
+        return
+    STATE_DIR.mkdir(exist_ok=True)
+    NAMES_FILE.write_text(json.dumps(names, ensure_ascii=False), encoding="utf-8")
 
 
 def load_login_state() -> dict | None:
