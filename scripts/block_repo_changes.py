@@ -4,9 +4,8 @@ Claude Code の PreToolUse フックから呼ばれる。
 
 1. 送る中身に、コドモンのパスワード・メールアドレス、ぴよログの URL、子どもの名前、園の名前が入っていたら、
    誰の会話でも止める。名前は、コドモンの画面を開いた時に tmp/codmon_names.json に控えたものを使う。
-2. 連絡帳を使うだけの会話がコミットや PR を作らないよう、開発者以外の会話では止める。
-   GitHub のユーザー名が開発者なら通す。ユーザー名が分からない時も止める。
-   自分のフォークを直したい人は、環境変数 CODMON4CLAUDE_DEV=1 を入れると通る（1 の決まりは残る）。
+2. 連絡帳を使うだけの会話がコミットや PR を作らないよう、環境変数 CODMON4CLAUDE_DEV=1 が無ければ止める。
+   開発する人は、クラウド環境の環境変数か手元の .env にこの行を入れる（1 の決まりは残る）。
 """
 
 from __future__ import annotations
@@ -16,10 +15,8 @@ import os
 import re
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
 
-DEVELOPER = "ethfumi"
 DEV_FLAG = "CODMON4CLAUDE_DEV"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 NAMES_FILE = REPO_ROOT / "tmp" / "codmon_names.json"
@@ -31,7 +28,7 @@ BASH_PATTERN = re.compile(
     r"|\bgh\s+api\b.*\s(-f|-F|--field|--raw-field|--input)\b"
 )
 MCP_PATTERN = re.compile(r"github.*(create|update|merge|push|delete|fork|comment)", re.IGNORECASE)
-MESSAGE = "このリポジトリを変更する操作は、開発者の会話でしかできません。変更はせず、気づいたことを相手に短く伝えて、連絡帳を続けてください。"
+MESSAGE = "このリポジトリを変更する操作は、開発用の会話（環境変数 CODMON4CLAUDE_DEV=1）でしかできません。変更はせず、気づいたことを相手に短く伝えて、連絡帳を続けてください。"
 LEAK_MESSAGE = (
     "送ろうとした変更に、{kinds}が入っているので止めました。値は表示しません。"
     "その行を変更から外してから、やり直してください。"
@@ -108,30 +105,6 @@ def outgoing(tool_name: str, tool_input: dict, cwd: str) -> str:
     ])
 
 
-def github_login() -> str | None:
-    """今の会話の GitHub のユーザー名を返す。分からなければ None。"""
-    try:
-        r = subprocess.run(["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True, timeout=10)
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        pass
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    headers = {"User-Agent": "codmon4claude"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    try:
-        req = urllib.request.Request("https://api.github.com/user", headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as res:
-            return json.load(res).get("login")
-    except (OSError, ValueError):
-        return None
-
-
-def should_stop(login: str | None) -> bool:
-    return login != DEVELOPER
-
-
 def stop(message: str) -> None:
     sys.stderr.reconfigure(encoding="utf-8")
     print(message, file=sys.stderr)
@@ -154,9 +127,7 @@ def main() -> None:
     kinds = leaks(outgoing(tool_name, tool_input, cwd), secrets(dict(os.environ), load_names()))
     if kinds:
         stop(LEAK_MESSAGE.format(kinds="・".join(kinds)))
-    if os.environ.get(DEV_FLAG) == "1":
-        return
-    if should_stop(github_login()):
+    if os.environ.get(DEV_FLAG) != "1":
         stop(MESSAGE)
 
 
