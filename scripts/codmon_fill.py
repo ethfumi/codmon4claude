@@ -5,7 +5,7 @@
     python3 scripts/codmon_fill.py draft.json --save    # 埋めて「下書き保存」を押す
     python3 scripts/codmon_fill.py --read               # 今入っている内容を表示するだけ
     python3 scripts/codmon_fill.py draft.json --save --date 2026-11-06   # 日付を指定する
-    python3 scripts/codmon_fill.py --history 30 --out tmp/notebook_history.json   # 前の 30 日の連絡帳を読むだけ
+    python3 scripts/codmon_fill.py --history 14 --out tmp/notebook_history.json   # 前の 14 日の連絡帳を読むだけ
 
 draft.json に書いた欄だけを変える。書かない欄は入っている内容のまま残るので、夜と朝に分けて少しずつ入れられる。
 書いた欄に別の内容がすでに入っている時は、何も変えずに止まり、入っている内容を表示する。

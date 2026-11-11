@@ -2,7 +2,7 @@
 
     python3 scripts/codmon_browser.py start   # 裏で起動して、すぐ戻る
     python3 scripts/codmon_browser.py stop
-    python3 scripts/codmon_browser.py prefetch   # 前の 30 日の連絡帳を裏で読み、tmp/notebook_history.json に置く
+    python3 scripts/codmon_browser.py prefetch   # 前の 14 日の連絡帳を裏で読み、tmp/notebook_history.json に置く
 
 使われないまま 15 分たつか、起動から 1 時間たつか、日付が変わると自分で閉じる。
 プロフィールは一時フォルダで、閉じると消える。動かなければ codmon_fill.py は毎回起動する形に戻る。
@@ -84,7 +84,7 @@ def start() -> None:
 
 
 HISTORY_FILE = STATE_DIR / "notebook_history.json"
-HISTORY_DAYS = 30
+HISTORY_DAYS = 14
 HISTORY_STARTED = STATE_DIR / "notebook_history.started"
 HISTORY_STARTED_SECONDS = 180
 

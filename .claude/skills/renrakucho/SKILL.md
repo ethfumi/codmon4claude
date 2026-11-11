@@ -41,7 +41,7 @@ python3 scripts/piyolog_summary.py
 
 直近 24 時間の体温・食事・うんち・睡眠・体調・メモが出る。失敗したら `python3 scripts/setup_check.py --human` で原因を確かめ、`docs/setup.md` のどこが足りないかを保護者に伝える。
 
-### 前の 30 日の連絡帳
+### 前の 14 日の連絡帳
 
 会話の始まりに裏で読まれ、読み終わると `tmp/notebook_history.json` に置かれる。`days` に日ごとの全部の欄、`usual` にいつもの値（draft.json と同じ形。お迎えは曜日ごとの `pickup_by_weekday`、食事はいつも入っている品目の `meal_morning_items`・`meal_night_items`（毎日違う献立の家庭では出ない）、コメントは同じ書き方が 2 回以上あった時だけ。入っている日が半分に届かない欄は、いつもは空なので出ない）。使い方は 3。
 
