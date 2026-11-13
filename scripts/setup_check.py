@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -86,7 +87,12 @@ def history_state() -> str:
         return f"読み終わった（中身のある日 {len(days)} 日）"
     except (OSError, ValueError, KeyError):
         pass
-    return "裏で読んでいる" if codmon_browser.HISTORY_STARTED.exists() else "まだ読んでいない"
+    # 読み始めの印は、途中で失敗しても残る。prefetch が読み直せる古さなら、読んでいる扱いにしない
+    try:
+        age = time.time() - codmon_browser.HISTORY_STARTED.stat().st_mtime
+    except OSError:
+        return "まだ読んでいない"
+    return "裏で読んでいる" if age < codmon_browser.HISTORY_STARTED_SECONDS else "まだ読んでいない"
 
 
 def build_report(missing_env: list[str], piyolog: dict, codmon: dict, history: str | None = None) -> str:
