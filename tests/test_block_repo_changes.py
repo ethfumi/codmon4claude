@@ -1,4 +1,6 @@
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -28,7 +30,6 @@ class BlockRepoChangesTest(unittest.TestCase):
         self.assertFalse(b.is_blocked("mcp__github__get_pull_request", {}))
         self.assertFalse(b.is_blocked("Read", {"file_path": "a"}))
 
-
     def test_secrets_and_leaks(self):
         env = {"CODMON_PASSWORD": "pass-1234", "CODMON_EMAIL": "a@example.com",
                "PIYOLOG_FEED_URL": "https://feed.piyolog.com/v1/feeds/abcdefghijklmnopqrstuvwx.ics"}
@@ -52,6 +53,26 @@ class BlockRepoChangesTest(unittest.TestCase):
         found = b.secrets({}, {"children": ["たろう"]})
         text = b.outgoing("mcp__github__create_issue", {"body": "たろうの記録"}, ".")
         self.assertEqual(b.leaks(text, found), ["子どもの名前"])
+
+    def git(self, cwd, *args):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args], cwd=cwd, check=True, capture_output=True)
+
+    def test_new_file_added_in_the_same_command_is_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.git(tmp, "init", "-q")
+            (Path(tmp) / "memo.txt").write_text("たろうの記録", encoding="utf-8")
+            self.assertIn("たろう", b.outgoing("Bash", {"command": "git add memo.txt && git commit -m x && git push"}, tmp))
+            self.assertNotIn("たろう", b.outgoing("Bash", {"command": "git push"}, tmp))
+
+    def test_commit_on_detached_head_is_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.git(tmp, "init", "-q")
+            self.git(tmp, "commit", "-q", "--allow-empty", "-m", "first")
+            self.git(tmp, "checkout", "-q", "--detach")
+            (Path(tmp) / "memo.txt").write_text("たろうの記録", encoding="utf-8")
+            self.git(tmp, "add", "memo.txt")
+            self.git(tmp, "commit", "-q", "-m", "second")
+            self.assertIn("たろう", b.outgoing("Bash", {"command": "git push origin HEAD:x"}, tmp))
 
     def test_load_names_missing_file(self):
         self.assertEqual(b.load_names(Path("does-not-exist.json")), {})
