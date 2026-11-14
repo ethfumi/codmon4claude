@@ -17,9 +17,9 @@ import json
 import os
 import sys
 import urllib.request
+from datetime import datetime, timedelta, timezone
 
 import local_env
-from datetime import datetime, timedelta, timezone
 
 JST = timezone(timedelta(hours=9))
 SUPPORTED_SCHEMA = 1

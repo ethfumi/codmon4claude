@@ -27,6 +27,8 @@ BASH_PATTERN = re.compile(
     r"|\bgh\s+api\b.*(-X|--method)\s*(POST|PUT|PATCH|DELETE)"
     r"|\bgh\s+api\b.*\s(-f|-F|--field|--raw-field|--input)\b"
 )
+ADD_PATTERN = re.compile(r"\bgit\b.*\badd\b")
+UNTRACKED_READ_BYTES = 1_000_000
 MCP_PATTERN = re.compile(r"github.*(create|update|merge|push|delete|fork|comment)", re.IGNORECASE)
 MESSAGE = "このリポジトリを変更する操作は、開発用の会話（環境変数 CODMON4CLAUDE_DEV=1）でしかできません。変更はせず、気づいたことを相手に短く伝えて、連絡帳を続けてください。"
 LEAK_MESSAGE = (
@@ -91,17 +93,38 @@ def _git(cwd: str, *args: str) -> str:
         return ""
 
 
+def _untracked(cwd: str) -> str:
+    """まだ git に入っていないファイルの名前と中身。大きいファイルは先頭だけを読む。"""
+    top = _git(cwd, "rev-parse", "--show-toplevel").strip()
+    if not top:
+        return ""
+    out = []
+    for name in _git(top, "ls-files", "--others", "--exclude-standard", "-z").split("\0"):
+        if not name:
+            continue
+        out.append(name)
+        try:
+            with open(Path(top) / name, "rb") as f:
+                out.append(f.read(UNTRACKED_READ_BYTES).decode("utf-8", "replace"))
+        except OSError:
+            pass
+    return "\n".join(out)
+
+
 def outgoing(tool_name: str, tool_input: dict, cwd: str) -> str:
     """この操作で GitHub へ出ていく可能性のある中身。"""
     if tool_name != "Bash":
         return json.dumps(tool_input, ensure_ascii=False)
+    command = tool_input.get("command", "")
     return "\n".join([
-        tool_input.get("command", ""),
+        command,
+        # git add と commit・push を 1 つのコマンドで行うと、新しいファイルは実行の前の diff に出ない
+        _untracked(cwd) if ADD_PATTERN.search(command) else "",
         # コミットされる変更（ステージ済みと、-a で入る変更）
         _git(cwd, "diff", "HEAD"),
-        # まだどのリモートにも無いコミット
+        # まだどのリモートにも無いコミット（ブランチに乗っていない HEAD も見る）
         # 作者の欄は比べない（メールアドレスがコドモンと同じことがある）
-        _git(cwd, "log", "-p", "--format=%B", "--branches", "--not", "--remotes"),
+        _git(cwd, "log", "-p", "--format=%B", "HEAD", "--branches", "--not", "--remotes"),
     ])
 
 

@@ -21,7 +21,7 @@ draft.json の形（書かない欄はそのまま）:
       "meal_morning": "パン、バナナ、牛乳",
       "sleep":        {"bed": "20:45", "wake": "6:00"},
       "temperature":  {"celsius": 36.8, "time": "6:10"},
-      "pickup":       "18:00 父",
+      "pickup":       "18時\nパパ",
       "comment":      "朝だけ少しせき"
     }
 
@@ -49,7 +49,6 @@ from pathlib import Path
 import local_env
 
 LOGIN_URL = "https://parents.codmon.com/"
-CONTACT_URL = "https://parents.codmon.com/contact"
 STATE_DIR = Path(__file__).resolve().parent.parent / "tmp"
 LOGIN_STORAGE_KEYS = {"codmon_parent_id", "CapacitorStorage.codmon_semantic_id", "CapacitorStorage.codmon_client_unique_id", "CapacitorStorage.codmon_following_id"}
 POOP_STATES = ["普通", "軟便", "少量便", "硬便", "下痢便"]
@@ -472,10 +471,6 @@ def selects_by_placeholder(page) -> dict[str, list]:
     return out
 
 
-def textarea(page, placeholder: str, nth: int = 0):
-    return page.locator("textarea").filter(has=page.locator(f"xpath=self::*[@placeholder={json.dumps(placeholder)}]")).nth(nth)
-
-
 def type_into(el, text: str) -> None:
     """fill だけだと、続けて入れた別の欄の値が画面に残らない事があったので、打って欄を離れる。"""
     el.click()
@@ -624,7 +619,7 @@ def main() -> None:
     p.add_argument("--date", help="開く連絡帳の日付（YYYY-MM-DD）。省略時は午前は今日、12 時以降は明日")
     p.add_argument("--overwrite", action="store_true", help="すでに入っている内容を上書きする")
     p.add_argument("--save", action="store_true", help="「下書き保存」を押す（送信はしない）")
-    p.add_argument("--history", type=int, metavar="日数", help="前の日数分の食事の欄を読むだけ")
+    p.add_argument("--history", type=int, metavar="日数", help="前の日数分の連絡帳を読むだけ")
     p.add_argument("--out", help="--history の結果を書くファイル（読み終わった時だけ現れる）")
     p.add_argument("--headed", action="store_true")
     a = p.parse_args()

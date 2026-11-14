@@ -183,12 +183,9 @@ class CodmonFillTest(unittest.TestCase):
         })
 
     def test_browser_port_is_stable_per_account(self):
-        import os
-        from unittest import mock
-
         import codmon_browser as cb
 
-        with mock.patch.dict(os.environ, {"CODMON_EMAIL": "a@example.com"}):
+        with mock.patch.dict("os.environ", {"CODMON_EMAIL": "a@example.com"}):
             first = cb.port()
             self.assertEqual(first, cb.port())
         self.assertTrue(9300 <= first < 9800)
